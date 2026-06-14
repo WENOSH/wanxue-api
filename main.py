@@ -164,6 +164,276 @@ async def get_course_html(course_id: str):
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
 
+# ── 分享与预览端点 ──────────────────────────────
+
+@app.get("/api/courses/{course_id}/preview")
+async def get_course_preview(course_id: str):
+    """获取课程预览（前2张卡片 + 元数据），用于分享"""
+    meta_path = OUTPUT_DIR / course_id / "course.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="课程未找到")
+    course = json.loads(meta_path.read_text(encoding="utf-8"))
+    chapters = course.get("chapters", [])
+    preview = {
+        "course_id": course_id,
+        "course_title": course.get("course_title", ""),
+        "course_emoji": course.get("course_emoji", ""),
+        "course_subtitle": course.get("course_subtitle", ""),
+        "total_chapters": len(chapters),
+        "total_cards": course.get("_total_cards", 0),
+        "preview_cards": [],
+        "full_version_available": True,
+    }
+    # 取前 2 张卡片
+    if chapters:
+        for ch in chapters[:1]:  # 只取第1章
+            for card in ch.get("cards", [])[:2]:  # 取前2张卡片
+                preview["preview_cards"].append({
+                    "type": card.get("type", ""),
+                    "title": card.get("title", ""),
+                    "body": card.get("body", ""),
+                })
+    return preview
+
+
+@app.get("/api/share/{course_id}")
+async def get_share_link(course_id: str):
+    """生成课程分享链接"""
+    meta_path = OUTPUT_DIR / course_id / "course.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="课程未找到")
+    course = json.loads(meta_path.read_text(encoding="utf-8"))
+    return {
+        "share_url": f"/share/{course_id}",
+        "title": course.get("course_title", ""),
+        "emoji": course.get("course_emoji", ""),
+    }
+
+
+@app.get("/share/{course_id}", response_class=HTMLResponse)
+async def share_course_page(course_id: str):
+    """分享落地页 — 预览前几张卡片 + 下载引导"""
+    meta_path = OUTPUT_DIR / course_id / "course.json"
+    if not meta_path.exists():
+        return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>课程未找到 - WanXue 万学</title>
+<style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff8e7;color:#2d3047;text-align:center;padding:20px}h1{font-size:24px;margin-bottom:8px}p{color:#6c6f7d}.btn{display:inline-block;margin-top:16px;padding:12px 24px;background:#ff6b6b;color:#fff;border-radius:10px;text-decoration:none;font-weight:700}</style>
+</head><body><div><h1>😕 课程未找到</h1><p>这个分享链接可能已过期或课程已被删除</p><a class="btn" href="/static/app.html">前往 WanXue</a></div></body></html>""")
+
+    course = json.loads(meta_path.read_text(encoding="utf-8"))
+    chapters = course.get("chapters", [])
+    title = course.get("course_title", "")
+    emoji = course.get("course_emoji", "📖")
+    subtitle = course.get("course_subtitle", "")
+    total_cards = course.get("_total_cards", 0)
+    total_chapters = len(chapters)
+
+    # 取前 2 张卡片
+    preview_cards = []
+    if chapters:
+        for ch in chapters[:1]:
+            for card in ch.get("cards", [])[:2]:
+                preview_cards.append({
+                    "type": card.get("type", ""),
+                    "title": card.get("title", ""),
+                    "body": card.get("body", ""),
+                })
+
+    # 渲染卡片HTML
+    cards_html = ""
+    for i, card in enumerate(preview_cards):
+        visible = "active" if i == 0 else ""
+        cards_html += f"""<div class="share-card {visible}" data-index="{i}">
+          <div class="card-badge">{card.get('type', 'card')}</div>
+          <h3 class="card-title">{card.get('title', '')}</h3>
+          <div class="card-body">{card.get('body', '')}</div>
+        </div>"""
+
+    # 如果不足2张卡片，加一个空的占位
+    if len(preview_cards) < 1:
+        cards_html = """<div class="share-card active"><div class="card-body" style="text-align:center;padding:40px 0">暂无预览内容</div></div>"""
+
+    # 翻页导航（如果有2张卡片）
+    pagination_html = ""
+    if len(preview_cards) > 1:
+        pagination_html = f"""<div class="card-nav">
+          <button class="nav-btn" id="prevBtn" onclick="changeCard(-1)" disabled>‹</button>
+          <span class="nav-dots" id="navDots">
+            {"".join(f'<span class="dot {"active" if i==0 else ""}"></span>' for i in range(len(preview_cards)))}
+          </span>
+          <button class="nav-btn" id="nextBtn" onclick="changeCard(1)">›</button>
+        </div>"""
+
+    remaining = total_cards - len(preview_cards)
+    remaining_text = f"全 {total_cards} 张卡片" if remaining <= 0 else f"全 {total_cards} 张卡片（还有 {remaining} 张）"
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="WanXue 万学 - {title}">
+<meta name="theme-color" content="#fff8e7">
+<title>{emoji} {title} - WanXue 万学</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+    background: #fff8e7; color: #2d3047; line-height: 1.6; min-height: 100vh;
+    display: flex; flex-direction: column;
+  }}
+  .container {{ max-width: 480px; margin: 0 auto; width: 100%; flex: 1; display: flex; flex-direction: column; }}
+
+  /* ===== Header ===== */
+  .share-header {{
+    text-align: center; padding: 32px 20px 24px; position: relative;
+    background: linear-gradient(180deg, #fff8e7 0%, rgba(255,230,109,0.15) 100%);
+  }}
+  .share-header .course-emoji {{ font-size: 48px; display: block; margin-bottom: 12px; }}
+  .share-header h1 {{ font-size: 22px; font-weight: 800; color: #2d3047; margin-bottom: 6px; }}
+  .share-header .subtitle {{ font-size: 14px; color: #6c6f7d; margin-bottom: 8px; }}
+  .share-header .meta {{ font-size: 12px; color: #9a9dad; }}
+  .share-header .meta span {{ margin: 0 6px; }}
+
+  /* ===== Card Preview ===== */
+  .card-area {{ flex: 1; padding: 0 16px; display: flex; flex-direction: column; }}
+  .card-stack {{ position: relative; flex: 1; min-height: 280px; margin-bottom: 12px; }}
+  .share-card {{
+    position: absolute; top: 0; left: 0; right: 0;
+    background: #ffffff; border-radius: 16px; padding: 20px;
+    box-shadow: 0 4px 16px rgba(45,48,71,0.08);
+    border: 1px solid #f0e8d5;
+    opacity: 0; transform: translateX(30px) scale(0.96);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+  }}
+  .share-card.active {{
+    opacity: 1; transform: translateX(0) scale(1);
+    pointer-events: auto; position: relative;
+  }}
+  .share-card .card-badge {{
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; margin-bottom: 10px;
+    background: #4ecdc4; color: #fff;
+  }}
+  .share-card .card-title {{ font-size: 17px; font-weight: 700; margin-bottom: 10px; color: #2d3047; }}
+  .share-card .card-body {{ font-size: 14px; color: #6c6f7d; line-height: 1.7; }}
+  .share-card .card-body p {{ margin-bottom: 8px; }}
+  .share-card .card-body ul {{ padding-left: 18px; margin-bottom: 8px; }}
+  .share-card .card-body li {{ margin-bottom: 4px; }}
+
+  /* ===== Pagination ===== */
+  .card-nav {{
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 8px 0 16px;
+  }}
+  .nav-btn {{
+    width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid #f0e8d5;
+    background: #ffffff; color: #2d3047; font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; font-family: inherit;
+  }}
+  .nav-btn:active {{ background: #fff8e7; transform: scale(0.92); }}
+  .nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
+  .nav-dots {{ display: flex; gap: 8px; }}
+  .nav-dots .dot {{
+    width: 8px; height: 8px; border-radius: 50%; background: #f0e8d5; transition: all 0.25s;
+  }}
+  .nav-dots .dot.active {{ background: #ff6b6b; width: 20px; border-radius: 4px; }}
+
+  /* ===== Paywall ===== */
+  .paywall {{
+    margin: 0 16px 20px; padding: 24px 20px;
+    background: linear-gradient(135deg, #2d3047 0%, #3d4057 100%);
+    border-radius: 16px; text-align: center; color: #fff;
+    position: relative; overflow: hidden;
+  }}
+  .paywall::before {{
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,107,107,0.15) 0%, transparent 50%);
+  }}
+  .paywall .lock-icon {{ font-size: 36px; display: block; margin-bottom: 8px; position: relative; }}
+  .paywall h2 {{ font-size: 18px; font-weight: 800; margin-bottom: 6px; position: relative; }}
+  .paywall p {{ font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 16px; position: relative; }}
+  .paywall .btn-download {{
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 28px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #ff6b6b, #ff8a65);
+    color: #fff; font-size: 16px; font-weight: 700; cursor: pointer;
+    text-decoration: none; transition: transform 0.15s; position: relative;
+    font-family: inherit;
+  }}
+  .paywall .btn-download:active {{ transform: scale(0.96); }}
+
+  /* ===== Footer ===== */
+  .share-footer {{
+    text-align: center; padding: 16px 20px 24px; font-size: 12px; color: #9a9dad;
+  }}
+  .share-footer .brand {{ font-weight: 700; color: #4ecdc4; }}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="share-header">
+    <span class="course-emoji">{emoji}</span>
+    <h1>{title}</h1>
+    <div class="subtitle">{subtitle}</div>
+    <div class="meta">
+      <span>📚 {total_chapters} 章</span>
+      <span>🃏 {total_cards} 张卡片</span>
+    </div>
+  </div>
+
+  <div class="card-area">
+    <div class="card-stack">
+      {cards_html}
+    </div>
+    {pagination_html}
+  </div>
+
+  <div class="paywall">
+    <span class="lock-icon">🔒</span>
+    <h2>已解锁 2 / {total_cards} 张卡片</h2>
+    <p>下载 WanXue APP 继续学习{remaining_text}</p>
+    <a class="btn-download" href="/static/app.html">
+      📲 下载 WanXue 万学
+    </a>
+  </div>
+
+  <div class="share-footer">
+    由 <span class="brand">WanXue 万学</span> 生成 · 对话式结构化学习
+  </div>
+</div>
+
+<script>
+(function() {{
+  'use strict';
+  var cards = document.querySelectorAll('.share-card');
+  var current = 0;
+  window.changeCard = function(dir) {{
+    var next = current + dir;
+    if (next < 0 || next >= cards.length) return;
+    cards[current].classList.remove('active');
+    cards[next].classList.add('active');
+    current = next;
+    var prevBtn = document.getElementById('prevBtn');
+    var nextBtn = document.getElementById('nextBtn');
+    if (prevBtn) prevBtn.disabled = current === 0;
+    if (nextBtn) nextBtn.disabled = current === cards.length - 1;
+    // 更新 dots
+    var dots = document.querySelectorAll('.nav-dots .dot');
+    dots.forEach(function(d, i) {{
+      d.classList.toggle('active', i === current);
+    }});
+  }};
+}})();
+</script>
+</body>
+</html>""")
+
+
+
 # ── 对话式学习端点 (2026-06-13 新增) ──────────────────
 from fastapi.responses import StreamingResponse
 
@@ -531,6 +801,15 @@ def _api_docs_html() -> str:
 
 <p><span class="method get">GET</span> <code>/api/courses/{course_id}/index.html</code></p>
 <p>获取生成的课程 HTML 页面。</p>
+
+<p><span class="method get">GET</span> <code>/api/courses/{course_id}/preview</code></p>
+<p>获取课程预览（前 2 张卡片 + 元数据），用于分享。</p>
+
+<p><span class="method get">GET</span> <code>/api/share/{course_id}</code></p>
+<p>生成课程分享链接。</p>
+
+<p><span class="method get">GET</span> <code>/share/{course_id}</code></p>
+<p>分享落地页 — 预览前几张卡片 + 下载引导。</p>
 
 <h2>静态文件</h2>
 <ul>
