@@ -818,7 +818,18 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   <div class="viewer-header">
     <button class="viewer-back" id="viewerBack">←</button>
     <div class="viewer-title" id="viewerTitle">课程</div>
+    <button class="viewer-share" id="viewerShareBtn" onclick="shareCourse()" title="分享课程">↗</button>
   </div>
+  <style>
+    .viewer-share {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: none; background: rgba(255,107,107,0.9); color: #fff;
+      font-size: 18px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font); transition: transform 0.15s;
+    }
+    .viewer-share:active { transform: scale(0.92); }
+  </style>
   <div class="viewer-progress" id="viewerProgress" style="display:none">
     <span>📊</span>
     <div class="progress-track">
@@ -1033,10 +1044,20 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       <div class="cp-title">${escapeHtml(title)}</div>
       ${subtitle ? `<div class="cp-subtitle" style="font-size:13px;color:var(--text-soft);margin-bottom:4px">${escapeHtml(subtitle)}</div>` : ''}
       <div class="cp-meta">${nChapters} 章 · ${nCards} 张卡片</div>
-      <div class="cp-btn">📖 打开学习</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div class="cp-btn" style="flex:1">📖 打开学习</div>
+        <div class="cp-share-btn" style="width:36px;height:36px;border-radius:8px;background:#ff6b6b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer" title="分享课程">↗</div>
+      </div>
     `;
-    wrap.addEventListener('click', () => {
+    wrap.addEventListener('click', (e) => {
+      if (e.target.closest('.cp-share-btn')) return; // 不触发分享按钮的课程打开
       openCourse(course);
+    });
+    // 课程预览中的分享按钮
+    wrap.querySelector('.cp-share-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.currentCourse = course;
+      shareCourse();
     });
     return wrap;
   }
@@ -1551,6 +1572,47 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     viewerOverlay.classList.remove('show');
     document.body.style.overflow = '';
     if (viewerIframe) { viewerIframe.remove(); viewerIframe = null; }
+  }
+
+  // ===== Share Course =====
+  async function shareCourse() {
+    // 优先从 viewer 获取课程 ID，其次从 state
+    var id = null;
+    if (viewerOverlay.classList.contains('show')) {
+      // 从 viewer iframe src 或 viewerTitle 推断
+      if (viewerIframe && viewerIframe.src) {
+        var m = viewerIframe.src.match(/\/api\/courses\/([^\/]+)\/index\.html/);
+        if (m) id = m[1];
+      }
+    }
+    if (!id && state.currentCourse) {
+      id = state.currentCourse._course_id || state.currentCourse.course_id;
+    }
+    if (!id) {
+      showToast('未找到可分享的课程', 'info');
+      return;
+    }
+    try {
+      var resp = await fetch(apiUrl('/api/share/' + encodeURIComponent(id)));
+      var data = await resp.json();
+      var url = window.location.origin + data.share_url;
+      // 尝试使用 Web Share API
+      if (navigator.share) {
+        await navigator.share({
+          title: data.title,
+          text: '我正在用 WanXue 学习 ' + (data.emoji || '📖') + ' ' + data.title + '，来看看！',
+          url: url
+        });
+      } else {
+        // 降级：复制链接到剪贴板
+        await navigator.clipboard.writeText(url);
+        showToast('分享链接已复制！', 'info');
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') {
+        showToast('分享失败：' + e.message, 'error');
+      }
+    }
   }
   $('#viewerBack').addEventListener('click', closeViewer);
   window.addEventListener('message', (e) => {
