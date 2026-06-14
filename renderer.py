@@ -1,0 +1,566 @@
+""" WanXue Course Renderer — 将课程 JSON 渲染为单文件卡片化 HTML """
+
+import html as _html
+try:
+    from .sync_injector import generate_sync_js
+except ImportError:
+    from sync_injector import generate_sync_js
+
+
+# ===== 内联 CSS =====
+_CSS = """
+:root {
+  --bg: #fff8e7; --primary: #ff6b6b; --secondary: #4ecdc4;
+  --accent: #ffe66d; --text: #2d3047; --text-soft: #6c6f7d;
+  --card-bg: #ffffff; --shadow: 0 4px 16px rgba(45, 48, 71, 0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg); color: var(--text);
+  line-height: 1.85; font-size: 19px;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior-x: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+/* 顶栏 */
+.top-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding: 10px 16px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  background: linear-gradient(135deg, #ffe66d 0%, #ff9a3c 100%);
+  box-shadow: 0 2px 8px rgba(255, 154, 60, 0.2);
+  z-index: 100;
+}
+.top-bar h1 {
+  color: var(--text); font-size: 17px; font-weight: bold;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.3);
+  margin-bottom: 8px; text-align: center;
+}
+.chapter-tabs {
+  display: flex; gap: 6px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.chapter-tabs::-webkit-scrollbar { display: none; }
+.ch-tab {
+  flex-shrink: 0;
+  padding: 6px 12px; border: none; border-radius: 16px;
+  background: rgba(255,255,255,0.6); color: var(--text);
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  font-family: inherit; cursor: pointer;
+  transition: all 0.2s;
+}
+.ch-tab.active {
+  background: var(--primary); color: white;
+  box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
+}
+/* 进度条 */
+.progress-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  background: rgba(0,0,0,0.05); z-index: 99;
+  margin-top: env(safe-area-inset-top);
+  padding-top: 50px; box-sizing: content-box;
+}
+.progress-fill {
+  height: 3px; background: linear-gradient(90deg, #ff6b6b, #ffe66d);
+  width: 0%; transition: width 0.4s;
+}
+/* 卡片区 */
+.card-area {
+  position: fixed;
+  top: 92px; bottom: 70px; left: 0; right: 0;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+}
+.chapter-section {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+}
+.card {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  margin: 0 auto;
+  width: 100%; max-width: 720px;
+  overflow-y: auto; padding: 20px 20px 30px;
+  opacity: 0; transform: translateX(40px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+  -webkit-overflow-scrolling: touch;
+}
+.card.active {
+  opacity: 1; transform: translateX(0);
+  pointer-events: auto;
+}
+/* 卡片标题 */
+.card h2 {
+  color: var(--primary); font-size: 28px; margin-bottom: 18px;
+  display: flex; align-items: center; gap: 8px;
+  line-height: 1.4;
+}
+.card h3 { color: var(--secondary); font-size: 22px; margin: 18px 0 10px; line-height: 1.4; }
+.card p { margin: 14px 0; color: var(--text); font-size: 19px; line-height: 1.85; }
+.card ul, .card ol { margin: 14px 0; padding-left: 22px; }
+.card li { margin: 8px 0; font-size: 19px; line-height: 1.8; }
+.card strong { color: var(--primary); }
+.card .emoji-big {
+  font-size: 56px; text-align: center; display: block; margin: 16px 0;
+}
+.card .story-box {
+  background: #fff3d6; border: 2px dashed var(--accent);
+  border-radius: 16px; padding: 20px; margin: 16px 0; font-size: 16px;
+}
+.card .game-box {
+  background: #e3f8f7; border: 2px solid var(--secondary);
+  border-radius: 20px; padding: 20px; margin: 20px 0; text-align: center;
+}
+.card .game-step {
+  background: white; border-radius: 12px; padding: 14px;
+  margin: 12px 0; text-align: left; font-size: 18px;
+}
+.card .answer-btn {
+  display: inline-block; background: var(--secondary); color: white;
+  border: none; padding: 12px 22px; border-radius: 22px;
+  font-size: 18px; cursor: pointer; margin: 6px;
+  font-family: inherit; font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s;
+}
+.card .answer-btn:active { transform: scale(0.96); }
+.card .answer-btn.correct { background: #6bcf7f; }
+.card .answer-btn.wrong { background: #ff8a80; }
+.card .answer-btn:disabled { opacity: 0.5; cursor: default; }
+.card .feedback {
+  margin-top: 12px; padding: 12px; border-radius: 12px; font-size: 18px;
+  display: none;
+}
+.card .feedback.show { display: block; }
+.card .feedback.good { background: #d4f4dd; color: #2d6a3e; }
+.card .feedback.bad { background: #ffe0e0; color: #c14545; }
+.card .funfact {
+  background: linear-gradient(135deg, #ffe66d 0%, #ff9a3c 100%);
+  color: var(--text); border-radius: 16px; padding: 18px; margin: 16px 0; font-size: 18px;
+}
+.card .funfact strong { color: var(--primary); }
+.card .scene-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0;
+}
+.card .scene-cell {
+  background: white; border: 2px solid var(--accent);
+  border-radius: 16px; padding: 14px; text-align: center; font-size: 17px;
+}
+.card .scene-cell .icon { font-size: 32px; display: block; margin-bottom: 6px; }
+.card .scene-cell h4 { color: var(--primary); font-size: 14px; margin-bottom: 4px; }
+.card .badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #ffe66d, #ff9a3c);
+  color: white; padding: 10px 20px; border-radius: 24px;
+  font-size: 18px; font-weight: bold; margin: 8px;
+  box-shadow: 0 4px 12px rgba(255, 154, 60, 0.4);
+}
+.card .summary {
+  background: linear-gradient(135deg, #a8e6cf 0%, #4ecdc4 100%);
+  color: white; border-radius: 20px; padding: 24px; text-align: center; margin: 24px 0;
+}
+.card .summary h2 { color: white; font-size: 22px; margin-bottom: 12px; }
+.card .challenge-box {
+  background: #fff0f0; border: 2px solid var(--primary);
+  border-radius: 16px; padding: 20px; margin: 16px 0;
+}
+.card .challenge-box h3 { color: var(--primary); }
+.card .progress-dots {
+  display: flex; justify-content: center; gap: 8px; margin: 16px 0;
+}
+.card .progress-dots .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #ddd; transition: all 0.3s;
+}
+.card .progress-dots .dot.done { background: var(--primary); }
+.card .progress-dots .dot.current { background: var(--secondary); transform: scale(1.3); }
+/* 底栏 */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 70px;
+  background: white; box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 100;
+}
+.bottom-bar .nav-btn {
+  background: var(--primary); color: white; border: none;
+  padding: 12px 20px; border-radius: 24px; font-size: 15px;
+  font-weight: bold; cursor: pointer; font-family: inherit;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  -webkit-tap-highlight-color: transparent;
+}
+.bottom-bar .nav-btn:disabled {
+  background: #ccc; cursor: not-allowed; box-shadow: none;
+}
+.bottom-bar .nav-btn.next {
+  background: var(--secondary);
+  box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
+}
+.bottom-bar .progress-text {
+  color: var(--text-soft); font-size: 14px; font-weight: 600;
+}
+/* 移动端适配 */
+@media (max-width: 480px) {
+  body { font-size: 18px; }
+  .top-bar h1 { font-size: 17px; }
+  .ch-tab { font-size: 13px; padding: 6px 12px; }
+  .card { padding: 18px 18px 26px; }
+  .card h2 { font-size: 24px; }
+  .card p { font-size: 15px; }
+  .card .scene-grid { grid-template-columns: 1fr; }
+  .bottom-bar { padding: 0 12px; }
+  .bottom-bar .nav-btn { padding: 10px 14px; font-size: 14px; }
+  .card-area { top: 80px; }
+}
+@media (max-width: 360px) {
+  .card { padding: 12px 14px 20px; }
+  .card h2 { font-size: 19px; }
+  .card p { font-size: 14px; }
+  .bottom-bar .nav-btn { padding: 8px 12px; font-size: 13px; }
+}
+@media (min-width: 768px) {
+  .card { padding: 28px 32px 40px; }
+  .card h2 { font-size: 26px; }
+}
+"""
+
+
+# ===== 内联 JS（需注入课程配置变量） =====
+_JS_BASE = """
+// 进度存储/读取
+function loadProgress() {
+  try {
+    var d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    if (d.ch) currentCh = d.ch;
+    if (typeof d.idx === 'number') currentIdx = d.idx;
+  } catch(e) {}
+}
+
+function saveProgress() {
+  try {
+    var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
+    if (currentIdx >= total) currentIdx = 0;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      ch: currentCh, idx: currentIdx, time: Date.now()
+    }));
+    // 派发自定义事件供同步器监听
+    window.dispatchEvent(new CustomEvent('wanxue_page_change'));
+  } catch(e) {}
+}
+
+// 计算总完成百分比
+function totalPercent() {
+  var completed = 0;
+  var chapterKeys = Object.keys(CHAPTER_DATA).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < chapterKeys.length; i++) {
+    var ch = chapterKeys[i];
+    if (ch < currentCh) completed += CHAPTER_DATA[ch].total;
+    else if (ch === currentCh) { completed += currentIdx; break; }
+  }
+  var totalCards = 0;
+  for (var k in CHAPTER_DATA) totalCards += CHAPTER_DATA[k].total;
+  return totalCards > 0 ? Math.min(100, Math.round((completed / totalCards) * 100)) : 0;
+}
+
+// 更新界面
+function updateUI() {
+  // Tab 高亮
+  var tabs = document.querySelectorAll('.ch-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', parseInt(tabs[i].dataset.ch) === currentCh);
+  }
+  // 章节 section 可见性
+  var sections = document.querySelectorAll('.chapter-section');
+  for (var j = 0; j < sections.length; j++) {
+    sections[j].style.display = parseInt(sections[j].dataset.ch) === currentCh ? 'block' : 'none';
+  }
+  // 当前章节卡片
+  var cards = document.querySelectorAll('.card[data-ch="' + currentCh + '"]');
+  for (var k = 0; k < cards.length; k++) {
+    cards[k].classList.toggle('active', k === currentIdx);
+  }
+  // 进度文字与按钮
+  var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
+  document.getElementById('prog-text').textContent = (currentIdx + 1) + ' / ' + total;
+  document.getElementById('btn-prev').disabled = currentIdx === 0 && currentCh === 1;
+  document.getElementById('btn-next').disabled = (function(){
+    var chapterIds = Object.keys(CHAPTER_DATA).map(Number);
+    var maxCh = Math.max.apply(null, chapterIds);
+    if (currentCh < maxCh) return false;
+    return currentIdx >= total - 1;
+  })();
+  // 顶部进度条 — 使用章节内进度
+  var pct = total > 0 ? ((currentIdx + 1) / total) * 100 : 0;
+  document.getElementById('progress').style.width = pct + '%';
+  // 章节标题更新
+  var activeTab = document.querySelector('.ch-tab.active');
+  if (activeTab) {
+    var title = activeTab.textContent || '';
+    document.querySelector('.top-bar h1').textContent = title + ' · 卡片 ' + (currentIdx + 1);
+  }
+  // 滚动卡片到顶
+  var activeCard = document.querySelector('.card[data-ch="' + currentCh + '"][data-idx="' + currentIdx + '"]');
+  if (activeCard) activeCard.scrollTop = 0;
+}
+
+// gotoCard：跳转到指定章节指定卡片
+function gotoCard(ch, idx) {
+  if (!CHAPTER_DATA[ch]) return;
+  var total = CHAPTER_DATA[ch].total;
+  if (idx < 0 || idx >= total) return;
+  currentCh = ch;
+  currentIdx = idx;
+  saveProgress();
+  updateUI();
+}
+
+// 翻页
+function goto(direction) {
+  var total = CHAPTER_DATA[currentCh].total;
+  var newIdx = currentIdx + direction;
+  if (newIdx < 0) {
+    // 上一章末尾
+    if (currentCh > 1) {
+      currentCh--;
+      currentIdx = CHAPTER_DATA[currentCh].total - 1;
+    }
+    saveProgress();
+    updateUI();
+    return;
+  }
+  if (newIdx >= total) {
+    // 下一章开头
+    var chapterIds = Object.keys(CHAPTER_DATA).map(Number);
+    var maxCh = Math.max.apply(null, chapterIds);
+    if (currentCh < maxCh) {
+      currentCh++;
+      currentIdx = 0;
+    }
+    saveProgress();
+    updateUI();
+    return;
+  }
+  // 同章翻页
+  currentIdx = newIdx;
+  saveProgress();
+  updateUI();
+}
+
+// 章节切换
+function switchChapter(ch) {
+  if (!CHAPTER_DATA[ch]) return;
+  currentCh = ch;
+  currentIdx = 0;
+  saveProgress();
+  updateUI();
+}
+
+// quiz 互动
+function checkAnswer(btn, isCorrect, fbId) {
+  var fb = document.getElementById(fbId);
+  if (!fb) return;
+  if (isCorrect) {
+    fb.className = 'feedback show good';
+    fb.innerHTML = '\\uD83C\\uDF89 <strong>答对啦！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
+    btn.classList.add('correct');
+  } else {
+    fb.className = 'feedback show bad';
+    fb.innerHTML = '\\uD83E\\uDD14 再想想～ ' + (btn.getAttribute('data-good') || '不对哦，再试试！');
+    btn.classList.add('wrong');
+  }
+  // 禁用同组所有按钮
+  var box = btn.closest('.game-box');
+  if (box) {
+    var btns = box.querySelectorAll('.answer-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+  }
+}
+
+// 事件绑定
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('btn-prev').onclick = function() { goto(-1); };
+  document.getElementById('btn-next').onclick = function() { goto(1); };
+  var tabs = document.querySelectorAll('.ch-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].onclick = function() { switchChapter(parseInt(this.dataset.ch)); };
+  }
+});
+
+// 键盘翻页
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowLeft') { e.preventDefault(); goto(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); goto(1); }
+});
+
+// 触摸滑动
+(function() {
+  var touchStartX = 0, touchStartY = 0;
+  var cardArea = document.querySelector('.card-area');
+  if (cardArea) {
+    cardArea.addEventListener('touchstart', function(e) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, {passive: true});
+    cardArea.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+        goto(dx < 0 ? 1 : -1);
+      }
+    }, {passive: true});
+  }
+})();
+
+// 启动
+loadProgress();
+updateUI();
+"""
+
+
+def render_html(course_data: dict) -> str:
+    """将课程 JSON 渲染为单文件卡片化 HTML
+
+    Args:
+        course_data: 来自 engine.py 的课程数据字典
+
+    Returns:
+        完整 HTML 字符串（单文件，内联 CSS/JS）
+    """
+    course_title = course_data.get("course_title", "课程")
+    course_emoji = course_data.get("course_emoji", "\U0001f4da")
+    course_id = course_data.get("_course_id", "course")
+    storage_key = f"wanxue_{course_id}"
+    chapter_totals = course_data.get("_chapter_totals", [0])
+    total_cards = course_data.get("_total_cards", 0)
+    chapters = course_data.get("chapters", [])
+
+    # 构建各部分 HTML
+    chapter_tabs_html = _build_chapter_tabs(chapters)
+    cards_html = _build_cards_html(chapters)
+    chapter_data_js = _build_chapter_data_js(chapters)
+
+    # 获取同步器 JS
+    sync_js = generate_sync_js(course_id, storage_key, chapter_totals, total_cards)
+
+    title_safe = _html.escape(f"{course_emoji} {course_title}")
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#fff8e7">
+<title>{title_safe}</title>
+<style>
+{_CSS}
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <h1>{title_safe}</h1>
+  <nav class="chapter-tabs" id="chapter-tabs">
+{chapter_tabs_html}
+  </nav>
+</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<div class="card-area" id="card-area">
+{cards_html}
+</div>
+
+<div class="bottom-bar">
+  <button class="nav-btn" id="btn-prev">&larr; 上一张</button>
+  <span class="progress-text" id="prog-text">1 / 1</span>
+  <button class="nav-btn next" id="btn-next">下一张 &rarr;</button>
+</div>
+
+<script>
+var CHAPTER_DATA = {chapter_data_js};
+var currentCh = 1;
+var currentIdx = 0;
+var STORAGE_KEY = '{storage_key}';
+{_JS_BASE}
+</script>
+
+{sync_js}
+
+</body>
+</html>"""
+    return html
+
+
+def _build_chapter_tabs(chapters: list) -> str:
+    """构建章节 Tab 按钮 HTML"""
+    lines = []
+    for ch in chapters:
+        ch_id = ch.get("id", 1)
+        emoji = ch.get("emoji", "\U0001f4d6")
+        title_short = ch.get("title", f"Ch{ch_id}")[:8]
+        active_cls = "active" if ch_id == 1 else ""
+        label = f"{emoji} {title_short}"
+        lines.append(
+            f'<button class="ch-tab {active_cls}" data-ch="{ch_id}">'
+            f'{_html.escape(label)}</button>'
+        )
+    return "\n".join(lines)
+
+
+def _build_cards_html(chapters: list) -> str:
+    """构建所有章节和卡片的 HTML"""
+    sections = []
+    global_card_id = 0
+
+    for ch in chapters:
+        ch_id = ch.get("id", 1)
+        is_first_chapter = ch_id == 1
+        display_style = "" if is_first_chapter else ' style="display:none;"'
+
+        cards_html = []
+        cards = ch.get("cards", [])
+        for card_idx, card in enumerate(cards):
+            is_active = card_idx == 0
+            active_cls = "active" if is_active else ""
+            card_body = card.get("body", "<p>内容待补充</p>")
+            card_type = card.get("type", "concept")
+
+            cards_html.append(
+                f'  <div class="card {active_cls}" id="c{global_card_id}" '
+                f'data-ch="{ch_id}" data-idx="{card_idx}" data-type="{card_type}">\n'
+                f'{card_body}\n'
+                f'  </div>'
+            )
+            global_card_id += 1
+
+        section = (
+            f'<section class="chapter-section" data-ch="{ch_id}"{display_style}>\n'
+            + "\n".join(cards_html)
+            + "\n</section>"
+        )
+        sections.append(section)
+
+    return "\n".join(sections)
+
+
+def _build_chapter_data_js(chapters: list) -> str:
+    """构建 JavaScript 的 CHAPTER_DATA 对象"""
+    entries = []
+    for ch in chapters:
+        ch_id = ch.get("id", 1)
+        total = len(ch.get("cards", []))
+        entries.append(f"  {ch_id}: {{total: {total}}}")
+    return "{\n" + ",\n".join(entries) + "\n}"
