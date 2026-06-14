@@ -11,14 +11,16 @@ try:
     from . import prompts
     from .config import (
         LLM_API_KEY, LLM_MODEL, LLM_BASE_URL,
-        LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER
+        LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER,
+        DIFFICULTY_LEVELS, DEFAULT_DIFFICULTY, get_difficulty_config,
     )
     from wanxue_api.wikipedia_helper import enrich_course_context
 except ImportError:
     import prompts
     from config import (
         LLM_API_KEY, LLM_MODEL, LLM_BASE_URL,
-        LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER
+        LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER,
+        DIFFICULTY_LEVELS, DEFAULT_DIFFICULTY, get_difficulty_config,
     )
     from wikipedia_helper import enrich_course_context
 
@@ -36,7 +38,8 @@ class WanXueEngine:
         self,
         topic: str,
         age: str = "成人",
-        goal: str = "入门科普"
+        goal: str = "入门科普",
+        difficulty: str = None,
     ) -> dict:
         """生成完整课程
 
@@ -44,25 +47,27 @@ class WanXueEngine:
             topic: 学习主题，如"量子力学"
             age: 学习者年龄，小学/中学/大学/成人
             goal: 学习目标，入门科普/考试准备/项目应用/深入研究
+            difficulty: 难度等级，1-入门/2-基础/3-标准/4-进阶/5-挑战
 
         Returns:
             dict: 结构化课程数据
         """
-        log.info(f"🚀 开始生成课程: topic={topic}, age={age}, goal={goal}")
+        diff_cfg = get_difficulty_config(difficulty)
+        log.info(f"🚀 开始生成课程: topic={topic}, age={age}, goal={goal}, diff={diff_cfg['key']}")
 
         if not self.api_key:
             log.warning("⚠️ 未配置 API KEY，使用降级模板")
-            return self._fallback_course(topic, age, goal)
+            return self._fallback_course(topic, age, goal, diff_cfg)
 
         try:
-            course_data = await self._call_llm(topic, age, goal)
+            course_data = await self._call_llm(topic, age, goal, diff_cfg)
         except Exception as e:
             log.warning(f"⚠️ 首次 LLM 调用失败，尝试补全: {e}")
             course_data = None
 
         if course_data:
             try:
-                validated = self._validate_and_fix(course_data, topic, age)
+                validated = self._validate_and_fix(course_data, topic, age, diff_cfg)
             except Exception as e:
                 log.warning(f"⚠️ 验证失败: {e}, LLM返回数据: {json.dumps(course_data, ensure_ascii=False)[:500]}")
                 validated = None
@@ -75,14 +80,16 @@ class WanXueEngine:
             # ── 质量补全：章节太少或卡片太少时让 LLM 补全 ─────
             total_chapters = len(validated["chapters"])
             total_cards = validated["_total_cards"]
-            MIN_CHAPTERS = 3
-            MIN_CARDS = 12
+            target_chapters = diff_cfg["chapters"]
+            target_cards = diff_cfg["chapters"] * (diff_cfg["cards"] - 1)
+            MIN_CHAPTERS = max(3, target_chapters - 2)
+            MIN_CARDS = max(10, target_cards - 10)
             if total_chapters < MIN_CHAPTERS or total_cards < MIN_CARDS:
                 log.warning(
                     f"⚠️ 课程过短 ({total_chapters}章/{total_cards}卡)，尝试 LLM 补全"
                 )
                 try:
-                    filled = await self._refill_short_course(topic, age, goal, validated)
+                    filled = await self._refill_short_course(topic, age, goal, diff_cfg, validated)
                     if filled and (
                         len(filled["chapters"]) > total_chapters
                         or filled["_total_cards"] > total_cards
@@ -98,7 +105,7 @@ class WanXueEngine:
         # 首次完全失败，尝试补全生成
         log.warning(f"⚠️ 首次解析失败，尝试 LLM 补全生成")
         try:
-            filled = await self._refill_short_course(topic, age, goal, {"chapters": []})
+            filled = await self._refill_short_course(topic, age, goal, diff_cfg, {"chapters": []})
             if filled and len(filled.get("chapters", [])) >= 3:
                 log.info(
                     f"✅ 补全生成成功: {len(filled['chapters'])}章/{filled['_total_cards']}卡"
@@ -108,12 +115,21 @@ class WanXueEngine:
             log.warning(f"补全生成失败: {e}")
 
         log.error(f"❌ LLM 生成失败，使用降级模板")
-        return self._fallback_course(topic, age, goal)
+        return self._fallback_course(topic, age, goal, diff_cfg)
 
-    async def _call_llm(self, topic: str, age: str, goal: str) -> dict:
+    async def _call_llm(self, topic: str, age: str, goal: str, diff_cfg: dict = None) -> dict:
         """调用 LLM API 生成课程 JSON"""
+        if diff_cfg is None:
+            diff_cfg = get_difficulty_config()
+        kind_hint = prompts.DIFFICULTY_KIND_HINTS.get(diff_cfg["key"], "难度适中")
         user_prompt = prompts.USER_PROMPT_TEMPLATE.format(
-            topic=topic, age=age, goal=goal
+            topic=topic, age=age, goal=goal,
+            difficulty_label=diff_cfg["label"],
+            difficulty_desc=diff_cfg["desc"],
+            difficulty_kind_hint=kind_hint,
+            chapters_count=diff_cfg["chapters"],
+            cards_per_chapter=diff_cfg["cards"],
+            total_cards=diff_cfg["chapters"] * diff_cfg["cards"],
         )
 
         # 注入维基百科知识（减少幻觉）
@@ -176,8 +192,13 @@ class WanXueEngine:
 
         raise ValueError(f"无法解析 LLM 返回的 JSON: {cleaned[:200]}...")
 
-    def _validate_and_fix(self, data: dict, topic: str, age: str) -> dict:
+    def _validate_and_fix(self, data: dict, topic: str, age: str, diff_cfg: dict = None) -> dict:
         """验证并修复课程数据"""
+        if diff_cfg is None:
+            diff_cfg = get_difficulty_config()
+        max_ch = diff_cfg["chapters"]
+        max_cards = diff_cfg["cards"] + 1  # 允许比预期多1张
+
         # 必需字段
         data.setdefault("course_title", f"{topic}入门课")
         data.setdefault("course_emoji", "📚")
@@ -187,8 +208,8 @@ class WanXueEngine:
         if not chapters:
             raise ValueError("课程没有章节")
 
-        # 截断到最大章节数
-        chapters = chapters[:MAX_CHAPTERS]
+        # 截断到最大章节数（使用难度配置的章节数）
+        chapters = chapters[:max_ch]
 
         for i, ch in enumerate(chapters):
             ch.setdefault("id", i + 1)
@@ -204,8 +225,8 @@ class WanXueEngine:
                     "body": f"<p>内容生成中...</p>"
                 }]
 
-            # 截断卡片数
-            cards = cards[:MAX_CARDS_PER_CHAPTER]
+            # 截断卡片数（使用难度配置的每章卡片数）
+            cards = cards[:max_cards]
 
             # 确保每张卡片有必需字段
             for j, card in enumerate(cards):
@@ -227,13 +248,15 @@ class WanXueEngine:
 
         return data
 
-    def _fallback_course(self, topic: str, age: str, goal: str) -> dict:
+    def _fallback_course(self, topic: str, age: str, goal: str, diff_cfg: dict = None) -> dict:
         """降级方案：生成模板课程（无需 LLM）"""
+        if diff_cfg is None:
+            diff_cfg = get_difficulty_config()
         slug = self._slugify(topic)
         return {
             "course_title": f"探索{topic}",
             "course_emoji": "📚",
-            "course_subtitle": f"适合{age}学习者的{topic}入门课",
+            "course_subtitle": f"适合{age}学习者的{topic}入门课（{diff_cfg['label']}）",
             "chapters": [
                 {
                     "id": 1,
@@ -279,9 +302,11 @@ class WanXueEngine:
         return slug[:50]
 
     async def _refill_short_course(
-        self, topic: str, age: str, goal: str, current: dict
+        self, topic: str, age: str, goal: str, diff_cfg: dict, current: dict
     ) -> Optional[dict]:
-        """课程过短时让 LLM 补全到 5 章，每章 7 卡"""
+        """课程过短时让 LLM 补全到目标章节数和卡片数"""
+        target_ch = diff_cfg["chapters"]
+        target_cards = diff_cfg["cards"]
         existing = json.dumps({
             "title": current.get("course_title", ""),
             "chapters": [
@@ -291,11 +316,11 @@ class WanXueEngine:
         }, ensure_ascii=False)
 
         user_prompt = (
-            f"主题：{topic}，年龄：{age}，目标：{goal}\n\n"
+            f"主题：{topic}，年龄：{age}，目标：{goal}，难度：{diff_cfg['label']}\n\n"
             f"现有内容（保留并扩展）：{existing}\n\n"
             f"请输出一份完整 JSON：\n"
-            f"- 保留已有章节并扩充每章到 7 张卡片\n"
-            f"- 总章节补足到 5 章\n"
+            f"- 保留已有章节并扩充每章到 {target_cards} 张卡片\n"
+            f"- 总章节补足到 {target_ch} 章\n"
             f"- 每张卡片含 type(7种:scene/concept/funfact/meta/explore/quiz/reward)、title、body(简短 HTML)\n"
             f"- 必须用 response_format json_object\n"
         )
@@ -321,4 +346,4 @@ class WanXueEngine:
         content = resp.json()["choices"][0]["message"]["content"]
         data = self._parse_json(content)
         # 复用验证流程
-        return self._validate_and_fix(data, topic, age)
+        return self._validate_and_fix(data, topic, age, diff_cfg)
