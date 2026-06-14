@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
+from fastapi import Header
 import json, logging, time
 
 # ── 本地模块（通过注册的包导入，相对导入可正常工作）──
@@ -56,6 +57,18 @@ app.add_middleware(
 
 engine = WanXueEngine()
 
+# ── 用户认证 ──────────────────────────────────────
+from wanxue_api.user_auth import (
+    init_db, register, login, verify_token, send_sms_code,
+    reset_password, update_profile, save_learning_record,
+    get_learning_records, get_learning_summary
+)
+
+
+@app.on_event("startup")
+async def startup_auth():
+    init_db()
+
 # 确保输出目录存在
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -83,6 +96,42 @@ class StabilityTestRequest(BaseModel):
     rounds: int = 1
     concurrency: int = 8
     quality_check: bool = True
+
+
+# ── Auth Models ────────────────────────────────────
+class AuthSendCodeRequest(BaseModel):
+    phone: str
+
+
+class AuthRegisterRequest(BaseModel):
+    phone: str
+    password: str
+    sms_code: str
+
+
+class AuthLoginRequest(BaseModel):
+    phone: str
+    password: str
+
+
+class AuthResetPasswordRequest(BaseModel):
+    phone: str
+    new_password: str
+    sms_code: str
+
+
+class AuthProfileRequest(BaseModel):
+    nickname: str = ""
+
+
+class SaveLearningRecordRequest(BaseModel):
+    course_id: str
+    course_title: str = ""
+    progress: int = 0
+    total_cards: int = 0
+    completed: bool = False
+    quiz_score: int = 0
+    badges: list = []
 
 
 # ── Routes ────────────────────────────────────────
@@ -736,6 +785,138 @@ async def stability_test(req: StabilityTestRequest = StabilityTestRequest()):
     return report
 
 
+# ── 用户认证路由 ──────────────────────────────────
+
+@app.post("/api/auth/send-code")
+async def auth_send_code(req: AuthSendCodeRequest):
+    """发送短信验证码"""
+    return send_sms_code(req.phone)
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: AuthRegisterRequest):
+    """手机号注册"""
+    return register(req.phone, req.password, req.sms_code)
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: AuthLoginRequest):
+    """登录"""
+    return login(req.phone, req.password)
+
+
+@app.post("/api/auth/reset-password")
+async def auth_reset_password(req: AuthResetPasswordRequest):
+    """忘记密码重置"""
+    return reset_password(req.phone, req.new_password, req.sms_code)
+
+
+@app.post("/api/auth/profile")
+async def auth_update_profile(req: AuthProfileRequest, authorization: str = Header(None)):
+    """更新用户资料（需 token）"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    return update_profile(user["user_id"], nickname=req.nickname)
+
+
+@app.get("/api/auth/profile")
+async def auth_get_profile(authorization: str = Header(None)):
+    """获取用户资料（需 token）"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    return {"success": True, **user}
+
+
+@app.post("/api/auth/learning/save")
+async def auth_save_learning(req: SaveLearningRecordRequest, authorization: str = Header(None)):
+    """保存学习记录（需 token）"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    return save_learning_record(
+        user["user_id"], req.course_id, req.course_title,
+        req.progress, req.total_cards, req.completed,
+        req.quiz_score, req.badges
+    )
+
+
+@app.get("/api/auth/learning/records")
+async def auth_get_learning_records(authorization: str = Header(None)):
+    """获取学习记录（需 token）"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    records = get_learning_records(user["user_id"])
+    return {"success": True, "records": records}
+
+
+@app.get("/api/auth/learning/summary")
+async def auth_get_learning_summary(authorization: str = Header(None)):
+    """获取学习摘要（需 token）"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    summary = get_learning_summary(user["user_id"])
+    return {"success": True, **summary}
+
+
+@app.get("/api/auth/learning/advice")
+async def get_learning_advice(authorization: str = Header(None)):
+    """AI 个性化学习建议 — 根据用户学习记录生成"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+
+    summary = get_learning_summary(user["user_id"])
+    records = get_learning_records(user["user_id"])
+
+    # 构建 Prompt
+    completed = summary["completed_courses"]
+    total = summary["total_courses"]
+    course_titles = [r["course_title"] for r in records[:5] if r["course_title"]]
+    courses_str = "、".join(course_titles) if course_titles else "暂无"
+
+    prompt_text = (
+        f"用户已学习 {total} 门课程，完成 {completed} 门。\n"
+        f"最近课程：{courses_str}\n"
+        f"总徽章：{summary['total_badges']}，总分：{summary['total_score']}\n\n"
+        f"请根据以上学习数据，生成一段简短、鼓励性的个性化学习建议（50-100 字），"
+        f"包括对当前进度的肯定和下一步学习方向的建议。用中文回复。"
+    )
+
+    # 调用 LLM 生成建议
+    try:
+        from wanxue_api.config import LLM_API_KEY, LLM_MODEL, LLM_BASE_URL
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            payload = {
+                "model": LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": "你是一个友善的学习顾问。请根据用户的学习数据给出个性化建议。回复简短、有温度。每个建议单独成行，不超过 3 行。"},
+                    {"role": "user", "content": prompt_text}
+                ],
+                "max_tokens": 512,
+                "temperature": 0.7,
+            }
+            headers = {
+                "Authorization": f"Bearer {LLM_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            url = f"{LLM_BASE_URL}/chat/completions"
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                advice = data["choices"][0]["message"]["content"].strip()
+            else:
+                raise RuntimeError(f"API 错误 {resp.status_code}")
+    except Exception as e:
+        log.warning(f"生成学习建议失败: {e}")
+        advice = "继续加油！每天学习一点点，知识就会慢慢积累起来。试着回顾一下学过的内容，巩固记忆效果更好哦。"
+
+    return {"success": True, "advice": advice}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse(content=_api_docs_html())
@@ -809,8 +990,44 @@ def _api_docs_html() -> str:
 <p><span class="method get">GET</span> <code>/api/share/{course_id}</code></p>
 <p>生成课程分享链接。</p>
 
-<p><span class="method get">GET</span> <code>/share/{course_id}</code></p>
-<p>分享落地页 — 预览前几张卡片 + 下载引导。</p>
+  <p><span class="method get">GET</span> <code>/share/{course_id}</code></p>
+  <p>分享落地页 — 预览前几张卡片 + 下载引导。</p>
+
+  <h2>用户认证</h2>
+  <p>所有认证路由（带 🔒 标记的）需要在请求头携带 <code>Authorization: Bearer &lt;token&gt;</code></p>
+
+  <p><span class="method post">POST</span> <code>/api/auth/send-code</code></p>
+  <p>发送短信验证码。请求体：<code>{"phone": "13800138000"}</code>。调试码 <code>888888</code> 永久可用。</p>
+
+  <p><span class="method post">POST</span> <code>/api/auth/register</code></p>
+  <p>手机号注册。请求体：<code>{"phone": "13800138000", "password": "xxx", "sms_code": "888888"}</code></p>
+
+  <p><span class="method post">POST</span> <code>/api/auth/login</code></p>
+  <p>手机号密码登录。请求体：<code>{"phone": "13800138000", "password": "xxx"}</code>
+  <br>返回 token，后续请求需在 Header 中携带。</p>
+
+  <p><span class="method post">POST</span> <code>/api/auth/reset-password</code></p>
+  <p>忘记密码重置。请求体：<code>{"phone": "13800138000", "new_password": "xxx", "sms_code": "888888"}</code></p>
+
+  <p><span class="method get">GET</span> <code>/api/auth/profile</code> 🔒</p>
+  <p>获取用户资料。</p>
+
+  <p><span class="method post">POST</span> <code>/api/auth/profile</code> 🔒</p>
+  <p>更新用户资料。请求体：<code>{"nickname": "小明"}</code></p>
+
+  <h2>学习记录</h2>
+
+  <p><span class="method post">POST</span> <code>/api/auth/learning/save</code> 🔒</p>
+  <p>保存/更新学习记录。请求体包含 <code>course_id</code>, <code>progress</code>, <code>total_cards</code> 等。</p>
+
+  <p><span class="method get">GET</span> <code>/api/auth/learning/records</code> 🔒</p>
+  <p>获取用户学习记录列表。</p>
+
+  <p><span class="method get">GET</span> <code>/api/auth/learning/summary</code> 🔒</p>
+  <p>获取学习摘要（总课程数、完成数、徽章、总得分）。</p>
+
+  <p><span class="method get">GET</span> <code>/api/auth/learning/advice</code> 🔒</p>
+  <p>AI 个性化学习建议 — 根据用户学习记录生成。</p>
 
 <h2>静态文件</h2>
 <ul>
