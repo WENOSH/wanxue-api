@@ -1229,6 +1229,14 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 <body>
 
 <!-- ===== Auth Landing Page (在 app 外部，不受 app 影响) ===== -->
+<style>
+  /* 默认隐藏主 APP，显示登录页。JS 登录成功后切换 */
+  #app { display: none !important; }
+  .auth-landing { display: flex !important; }
+  /* 已登录用户：通过 JS 添加 .logged-in 到 body 来反转 */
+  body.logged-in #app { display: block !important; }
+  body.logged-in .auth-landing { display: none !important; }
+</style>
 <div class="auth-landing" id="authOverlay">
   <div class="brand">
     <span class="brand-icon">📚</span>
@@ -2411,7 +2419,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
   // 更新 UI 显示登录/用户状态
   function updateAuthUI() {
-  function updateAuthUI() {
     if (state.user && state.token) {
       authBtn.style.display = 'none';
       userAvatarBtn.style.display = 'flex';
@@ -2467,23 +2474,30 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
   // 打开认证 Modal/首页
   function openAuthModal(tab) {
+    document.body.classList.remove('logged-in');
     authOverlay.classList.add('show');
-    authOverlay.style.display = 'flex';
-    // 如果 auth-landing 在 #app 外部，不需要隐藏 #app
-    // 但为了保险，隐藏 #app（auth-landing 独立显示）
-    var appEl = document.getElementById('app');
-    if (appEl) appEl.style.display = 'none';
     switchTab(tab || 'login');
     authError.classList.remove('show');
     authError.textContent = '';
   }
 
   function closeAuthModal() {
+    document.body.classList.add('logged-in');
     authOverlay.classList.remove('show');
-    authOverlay.style.display = '';
-    // 恢复 #app 显示
-    var appEl = document.getElementById('app');
-    if (appEl) appEl.style.display = '';
+  }
+
+  // 初始化登录状态
+  function initAuth() {
+    loadAuthState();
+    if (state.token && state.user) {
+      document.body.classList.add('logged-in');
+      showWelcome();
+      createSession();
+      msgInput.focus();
+    } else {
+      document.body.classList.remove('logged-in');
+      openAuthModal('login');
+    }
   }
 
   // Tab 切换
@@ -2851,15 +2865,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     if (e.key === 'Enter') handleEditName();
   });
 
-  // ===== Init =====
+  // ===== Init (由 initAuth 替代) =====
   async function init() {
-    // 登录守卫：未登录先弹出登录框
     if (!requireLogin()) return;
     showWelcome();
     try { await createSession(); } catch(e) { showToast('连接后端失败: '+e.message, 'error'); }
     msgInput.focus();
   }
-  init();
+  // 启动流程：initAuth 负责处理登录状态和页面切换
+  initAuth();
 })();
 </script>
 
