@@ -284,7 +284,7 @@ async def handle_user_message(
             session.user_profile["last_topic"] = topic
             session.add_msg("system", f"已生成《{topic}》{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
             # ★ 关键改动：规划 3 层嵌入式验证
-            plans = plan_checks(course)
+            plans = await plan_checks(course)
             session.check_plans = plans
             # 把 plan 摘要（不暴露全量）通过事件告诉前端
             plans_summary = [
