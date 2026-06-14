@@ -112,10 +112,11 @@ async def generate_course(req: GenerateRequest):
         html_content = _fallback_html(course)
 
     # 3. 保存文件
-    (course_dir / "index.html").write_text(html_content, encoding="utf-8")
-    (course_dir / "course.json").write_text(
-        json.dumps(course, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    clean_html = html_content.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+    (course_dir / "index.html").write_text(clean_html, encoding="utf-8")
+    course_json = json.dumps(course, ensure_ascii=False, indent=2)
+    course_json_clean = course_json.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+    (course_dir / "course.json").write_text(course_json_clean, encoding="utf-8")
 
     log.info(f"课程已保存: {course_id}")
 
