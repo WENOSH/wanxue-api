@@ -47,15 +47,16 @@ quiz 类型的 body 必须使用以下 HTML 结构：
 ```
 <div class="game-box">
   <p>题目文字</p>
-  <button class="answer-btn" onclick="checkAnswer(this,true,'fb1')" data-good="正确！因为...">选项A</button>
-  <button class="answer-btn" onclick="checkAnswer(this,false,'fb1')" data-good="再想想～">选项B</button>
-  <button class="answer-btn" onclick="checkAnswer(this,false,'fb1')" data-good="再想想～">选项C</button>
+  <button class="answer-btn" onclick="checkAnswer(this,true,'fb1')" data-good="鼓励语" data-explain="解释为什么这个选项正确">选项A</button>
+  <button class="answer-btn" onclick="checkAnswer(this,false,'fb1')" data-good="提示" data-explain="解释为什么这个选项不正确">选项B</button>
+  <button class="answer-btn" onclick="checkAnswer(this,false,'fb1')" data-good="提示" data-explain="解释为什么这个选项不正确">选项C</button>
   <div id="fb1" class="feedback"></div>
 </div>
 ```
 - 正确答案按钮用 true，错误答案用 false
 - onclick 和 id 中的数字按卡片内题目编号递增(fb1, fb2...)
 - data-good 给正确选项写鼓励语，错误选项写提示
+- **data-explain 对所有选项必填**：写 1-2 句话解释为什么这个选项对/不对，方便答完后展示
 - 每题2-4个选项
 
 ## 准确性铁律（最高优先级）
