@@ -406,6 +406,101 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   transform: scale(0.98);
 }
 
+/* ===== Difficulty Selector ===== */
+.difficulty-selector {
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(78, 205, 196, 0.08);
+  border-radius: 12px;
+  border: 1px solid rgba(78, 205, 196, 0.2);
+}
+.difficulty-selector .diff-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 8px;
+  text-align: center;
+}
+.difficulty-selector .diff-options {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.difficulty-selector .diff-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: 6px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+  font-family: var(--font);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.difficulty-selector .diff-btn:active { transform: scale(0.95); }
+.difficulty-selector .diff-btn .diff-label-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.difficulty-selector .diff-btn .diff-desc {
+  font-size: 9px;
+  color: var(--text-light);
+  white-space: nowrap;
+}
+.difficulty-selector .diff-btn.active {
+  border-color: var(--secondary);
+  background: linear-gradient(135deg, rgba(78,205,196,0.15), rgba(78,205,196,0.08));
+  box-shadow: 0 2px 8px rgba(78,205,196,0.2);
+}
+.difficulty-selector .diff-btn.active .diff-label-text {
+  color: var(--secondary-dark);
+}
+
+/* ===== Difficulty Feedback Bar ===== */
+.diff-feedback-bar {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #fff8e7, #ffe9b3);
+  border-radius: 12px;
+  border: 1px solid var(--accent);
+  text-align: center;
+}
+.diff-feedback-bar .fb-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.diff-feedback-bar .fb-options {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.diff-feedback-bar .fb-btn {
+  padding: 8px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--text);
+  transition: all 0.15s;
+}
+.diff-feedback-bar .fb-btn:active { transform: scale(0.95); }
+.diff-feedback-bar .fb-btn.too-easy { color: #ff6b6b; border-color: #ff6b6b; }
+.diff-feedback-bar .fb-btn.just-right { color: #4ecdc4; border-color: #4ecdc4; }
+.diff-feedback-bar .fb-btn.too-hard { color: #9b59b6; border-color: #9b59b6; }
+
 /* ===== Chat Messages ===== */
 .message {
   display: flex;
@@ -1477,24 +1572,57 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       '🤔 刚才黑洞那个没懂，再讲讲',
       '✏️ 考考我',
       '🌍 翻译成英文'
+    ],
+    difficulties: [
+      {key: '1-入门', label: '🌱 入门', desc: '零基础轻松学'},
+      {key: '2-基础', label: '📘 基础', desc: '系统学'},
+      {key: '3-标准', label: '📗 标准', desc: '全面深入（默认）'},
+      {key: '4-进阶', label: '📕 进阶', desc: '专业深度'},
+      {key: '5-挑战', label: '🔥 挑战', desc: '专家级'},
     ]
   };
 
   function showWelcome() {
     const card = document.createElement('div');
     card.className = 'welcome-card';
+    // 读取已保存的难度等级
+    const savedDiff = localStorage.getItem('wanxue_difficulty') || '3-标准';
     card.innerHTML = `
       <span class="welcome-emoji">${WELCOME.emoji}</span>
       <div class="welcome-title">${WELCOME.title}</div>
       <div class="welcome-subtitle">${WELCOME.subtitle}</div>
+      <div class="difficulty-selector">
+        <div class="diff-label">📊 选择适合你的难度（决定了课程长度和深度）</div>
+        <div class="diff-options">
+          ${WELCOME.difficulties.map(d => `
+            <button class="diff-btn ${d.key === savedDiff ? 'active' : ''}" data-diff="${d.key}" title="${d.desc}">
+              <span class="diff-label-text">${d.label}</span>
+              <span class="diff-desc">${d.desc}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
       <div class="suggestions">
         ${WELCOME.suggestions.map(s => `<div class="suggestion" data-msg="${s.replace(/^[^\s]+ /, '')}">${s}</div>`).join('')}
       </div>
     `;
     chatContainer.appendChild(card);
+    // 难度选择器
+    card.querySelectorAll('.diff-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        card.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const diff = btn.dataset.diff;
+        localStorage.setItem('wanxue_difficulty', diff);
+        showToast(`已选难度：${btn.querySelector('.diff-label-text').textContent}`, 'info');
+      });
+    });
+    // 建议按钮（仅填充输入框）
     card.querySelectorAll('.suggestion').forEach(s => {
       s.addEventListener('click', () => {
-        sendMessage(s.dataset.msg);
+        msgInput.value = s.dataset.msg;
+        msgInput.focus();
+        autoResizeTextarea();
       });
     });
   }
@@ -1844,10 +1972,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
     // 2. 启动 SSE
     try {
+      const diffFromStorage = localStorage.getItem('wanxue_difficulty') || '3-标准';
       const resp = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: state.sessionId })
+        body: JSON.stringify({
+          message: text,
+          session_id: state.sessionId,
+          difficulty: diffFromStorage
+        })
       });
       if (!resp.ok) {
         const t = await resp.text();
@@ -1910,6 +2043,10 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
+                // 课程完成后添加难度反馈
+                setTimeout(function() {
+                  thinkingBubble.appendChild(renderDifficultyFeedback());
+                }, 500);
                 // 课程完成时自动同步学习记录
                 setTimeout(function() {
                   syncLearningRecord({
@@ -1965,6 +2102,19 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
                 if (fb) tts.speak(fb, thinkingBubble);
               }
               setStatus('已记录');
+            } else if (lastEvent === 'difficulty_feedback') {
+              // 难度反馈结果
+              firstRealEvent = true;
+              thinkingBubble.classList.remove('thinking');
+              const fbMsg = (data && data.message) || '已记录你的难度偏好';
+              thinkingBubble.textContent = fbMsg;
+              attachTTSButton(thinkingBubble);
+              if (tts.enabled) tts.speak(fbMsg, thinkingBubble);
+              // 如果建议了新难度，更新 localStorage
+              if (data && data.suggested_difficulty) {
+                localStorage.setItem('wanxue_difficulty', data.suggested_difficulty);
+              }
+              setStatus('难度已记录');
             } else if (lastEvent === 'summary') {
               firstRealEvent = true;
               thinkingBubble.classList.remove('thinking');
@@ -2129,6 +2279,33 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       html += `</div>`;
     });
     wrap.innerHTML = html;
+    return wrap;
+  }
+
+  // ===== 难度反馈（课程学完后弹出） =====
+  function renderDifficultyFeedback() {
+    const wrap = document.createElement('div');
+    wrap.className = 'diff-feedback-bar';
+    wrap.innerHTML = `
+      <div class="fb-label">📊 这个课程的难度怎么样？你的反馈会帮我以后自动匹配合适的难度</div>
+      <div class="fb-options">
+        <button class="fb-btn too-easy" data-fb="太简单了">😅 太简单</button>
+        <button class="fb-btn just-right" data-fb="难度正好">👍 正好</button>
+        <button class="fb-btn too-hard" data-fb="太难了">😰 太难了</button>
+      </div>
+    `;
+    wrap.querySelectorAll('.fb-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // 把反馈通过聊天发送
+        const text = btn.dataset.fb;
+        // 先显示用户已选择
+        wrap.querySelectorAll('.fb-btn').forEach(b => b.disabled = true);
+        btn.style.transform = 'scale(0.95)';
+        // 自动发送到聊天
+        msgInput.value = text;
+        sendMessage();
+      });
+    });
     return wrap;
   }
 
