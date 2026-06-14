@@ -837,31 +837,48 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 .user-avatar-btn:active { transform: scale(0.92); }
 
 /* ===== Auth Modal ===== */
-.auth-overlay {
+/* ===== 登录首页（全屏落地页） ===== */
+.auth-landing {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 400;
-  background: rgba(45, 48, 71, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  z-index: 500;
+  background: linear-gradient(135deg, #fff8e7 0%, #ffe9b3 50%, #ffd9a0 100%);
   display: none;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 20px;
 }
-.auth-overlay.show { display: flex; }
-.auth-modal {
+.auth-landing.show { display: flex; }
+.auth-landing .brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.auth-landing .brand-icon {
+  font-size: 56px;
+  display: block;
+  margin-bottom: 10px;
+}
+.auth-landing .brand-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: #2d3047;
+  margin-bottom: 4px;
+}
+.auth-landing .brand-desc {
+  font-size: 14px;
+  color: #6c6f7d;
+  line-height: 1.5;
+}
+.auth-landing .auth-card {
   background: var(--card);
   border-radius: 20px;
   width: 100%;
   max-width: 360px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-lg);
-  padding: 24px 20px;
-  position: relative;
+  padding: 28px 24px 24px;
+  box-shadow: 0 8px 32px rgba(45, 48, 71, 0.1);
 }
-.auth-modal .close-btn {
+.auth-landing .close-btn {
   position: absolute;
   top: 12px; right: 12px;
   width: 32px; height: 32px;
@@ -876,15 +893,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   font-family: var(--font);
   color: var(--text-soft);
 }
-.auth-modal .close-btn:active { background: var(--border); }
-.auth-modal .auth-title {
+.auth-landing .close-btn:active { background: var(--border); }
+.auth-landing .auth-title {
   font-size: 20px;
   font-weight: 800;
   text-align: center;
   margin-bottom: 20px;
   color: var(--text);
 }
-.auth-modal .auth-tabs {
+.auth-landing .auth-tabs {
   display: flex;
   gap: 0;
   margin-bottom: 20px;
@@ -892,7 +909,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   border-radius: 12px;
   padding: 4px;
 }
-.auth-modal .auth-tab {
+.auth-landing .auth-tab {
   flex: 1;
   padding: 8px 0;
   text-align: center;
@@ -906,22 +923,22 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   border-radius: 10px;
   transition: all 0.2s;
 }
-.auth-modal .auth-tab.active {
+.auth-landing .auth-tab.active {
   background: var(--card);
   color: var(--text);
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
-.auth-modal .auth-field {
+.auth-landing .auth-field {
   margin-bottom: 14px;
 }
-.auth-modal .auth-field label {
+.auth-landing .auth-field label {
   display: block;
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 4px;
   color: var(--text);
 }
-.auth-modal .auth-field input {
+.auth-landing .auth-field input {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid var(--border);
@@ -935,15 +952,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   -webkit-user-select: text;
   user-select: text;
 }
-.auth-modal .auth-field input:focus {
+.auth-landing .auth-field input:focus {
   border-color: var(--secondary);
 }
-.auth-modal .auth-field .code-row {
+.auth-landing .auth-field .code-row {
   display: flex;
   gap: 8px;
 }
-.auth-modal .auth-field .code-row input { flex: 1; }
-.auth-modal .code-btn {
+.auth-landing .auth-field .code-row input { flex: 1; }
+.auth-landing .code-btn {
   padding: 10px 14px;
   border: none;
   background: linear-gradient(135deg, var(--secondary), #44a8d9);
@@ -957,9 +974,9 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   flex-shrink: 0;
   transition: all 0.15s;
 }
-.auth-modal .code-btn:active { transform: scale(0.96); }
-.auth-modal .code-btn:disabled { background: #ccc; cursor: not-allowed; }
-.auth-modal .submit-btn {
+.auth-landing .code-btn:active { transform: scale(0.96); }
+.auth-landing .code-btn:disabled { background: #ccc; cursor: not-allowed; }
+.auth-landing .submit-btn {
   width: 100%;
   padding: 12px;
   border: none;
@@ -973,13 +990,13 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   transition: all 0.15s;
   margin-top: 6px;
 }
-.auth-modal .submit-btn:active { transform: scale(0.97); }
-.auth-modal .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
-.auth-modal .auth-forgot {
+.auth-landing .submit-btn:active { transform: scale(0.97); }
+.auth-landing .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+.auth-landing .auth-forgot {
   text-align: center;
   margin-top: 12px;
 }
-.auth-modal .auth-forgot button {
+.auth-landing .auth-forgot button {
   border: none;
   background: transparent;
   color: var(--text-soft);
@@ -988,7 +1005,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   cursor: pointer;
   text-decoration: underline;
 }
-.auth-modal .auth-error {
+.auth-landing .auth-error {
   background: #fff0f0;
   color: #c14545;
   font-size: 13px;
@@ -997,7 +1014,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   margin-bottom: 12px;
   display: none;
 }
-.auth-modal .auth-error.show { display: block; }
+.auth-landing .auth-error.show { display: block; }
 
 /* ===== Profile Overlay ===== */
 .profile-overlay {
@@ -1297,8 +1314,13 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 <div class="toast" id="toast"></div>
 
 <!-- ===== Auth Modal ===== -->
-<div class="auth-overlay" id="authOverlay">
-  <div class="auth-modal" id="authModal">
+<div class="auth-landing" id="authOverlay">
+  <div class="brand">
+    <span class="brand-icon">📚</span>
+    <div class="brand-name">WanXue 万学</div>
+    <div class="brand-desc">对话式结构化学习平台<br>登录后开始学习之旅</div>
+  </div>
+  <div class="auth-card" id="authModal">
     <button class="close-btn" id="authCloseBtn">×</button>
     <div class="auth-title" id="authTitle">登录</div>
     <div class="auth-tabs" id="authTabs">
