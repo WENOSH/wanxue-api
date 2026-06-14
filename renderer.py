@@ -363,7 +363,7 @@ function updateUI() {
   document.getElementById('prog-text').textContent = (currentIdx + 1) + ' / ' + total;
   document.getElementById('btn-prev').disabled = currentIdx === 0 && currentCh === 1;
   document.getElementById('btn-next').disabled = (function(){
-    var chapterIds = Object.keys(CHAPTER_DATA).map(Number);
+    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
     var maxCh = Math.max.apply(null, chapterIds);
     if (currentCh < maxCh) return false;
     return currentIdx >= total - 1;
@@ -411,7 +411,7 @@ function goto(direction) {
   }
   if (newIdx >= total) {
     // 下一章开头
-    var chapterIds = Object.keys(CHAPTER_DATA).map(Number);
+    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
     var maxCh = Math.max.apply(null, chapterIds);
     if (currentCh < maxCh) {
       currentCh++;
@@ -444,18 +444,24 @@ function checkAnswer(btn, isCorrect, fbId) {
   if (!fb) return;
   if (isCorrect) {
     fb.className = 'feedback show good';
-    fb.innerHTML = '\\uD83C\\uDF89 <strong>答对啦！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
+    fb.innerHTML = '\uD83C\uDF89 <strong>答对啦！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
     btn.classList.add('correct');
+    // 答对后禁用所有按钮
+    var box = btn.closest('.game-box');
+    if (box) {
+      var btns = box.querySelectorAll('.answer-btn');
+      for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    }
   } else {
     fb.className = 'feedback show bad';
-    fb.innerHTML = '\\uD83E\\uDD14 再想想～ ' + (btn.getAttribute('data-good') || '不对哦，再试试！');
+    fb.innerHTML = '\uD83E\uDD14 再想想～ ' + (btn.getAttribute('data-good') || '不对哦，再试试！');
     btn.classList.add('wrong');
-  }
-  // 禁用同组所有按钮
-  var box = btn.closest('.game-box');
-  if (box) {
-    var btns = box.querySelectorAll('.answer-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    // 答错 1.5 秒后恢复，允许重选
+    setTimeout(function() {
+      btn.classList.remove('wrong');
+      fb.className = 'feedback';
+      fb.innerHTML = '';
+    }, 1500);
   }
 }
 
