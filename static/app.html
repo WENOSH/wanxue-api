@@ -1228,8 +1228,58 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 </head>
 <body>
 
+<!-- ===== Auth Landing Page (在 app 外部，不受 app 影响) ===== -->
+<div class="auth-landing" id="authOverlay">
+  <div class="brand">
+    <span class="brand-icon">📚</span>
+    <div class="brand-name">WanXue 万学</div>
+    <div class="brand-desc">对话式结构化学习平台<br>登录后开始学习之旅</div>
+  </div>
+  <div class="auth-card" id="authModal">
+    <button class="close-btn" id="authCloseBtn" style="display:none">&times;</button>
+    <div class="auth-title" id="authTitle">登录</div>
+    <div class="auth-error" id="authError"></div>
+
+    <!-- Login Form -->
+    <div class="auth-field" id="authFormLogin">
+      <label>手机号</label>
+      <input type="tel" id="loginPhone" placeholder="请输入手机号" autocomplete="tel">
+      <label style="margin-top:10px">密码</label>
+      <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password">
+      <button class="submit-btn" id="loginSubmitBtn">登录</button>
+      <div class="auth-forgot"><button id="showResetBtn">忘记密码？</button></div>
+    </div>
+
+    <!-- Register Form -->
+    <div class="auth-field" id="authFormRegister" style="display:none">
+      <label>手机号</label>
+      <input type="tel" id="regPhone" placeholder="请输入手机号" autocomplete="tel">
+      <div class="code-row">
+        <input type="text" id="regCode" placeholder="验证码" autocomplete="one-time-code">
+        <button class="code-btn" id="regCodeBtn">发送验证码</button>
+      </div>
+      <label style="margin-top:10px">设置密码</label>
+      <input type="password" id="regPassword" placeholder="至少6位密码" autocomplete="new-password">
+      <button class="submit-btn" id="regSubmitBtn">注册并登录</button>
+    </div>
+
+    <!-- Forgot Password Form -->
+    <div class="auth-field" id="authFormReset" style="display:none">
+      <label>手机号</label>
+      <input type="tel" id="resetPhone" placeholder="请输入手机号" autocomplete="tel">
+      <div class="code-row">
+        <input type="text" id="resetCode" placeholder="验证码" autocomplete="one-time-code">
+        <button class="code-btn" id="resetCodeBtn">发送验证码</button>
+      </div>
+      <label style="margin-top:10px">新密码</label>
+      <input type="password" id="resetPassword" placeholder="至少6位密码" autocomplete="new-password">
+      <button class="submit-btn" id="resetSubmitBtn">重置密码</button>
+      <div class="auth-forgot"><button id="showLoginBtn">返回登录</button></div>
+    </div>
+  </div>
+</div>
+
 <div id="app">
-  <!-- Top Header -->
   <header class="top-header">
     <div class="logo">🎓</div>
     <div class="title-block">
@@ -1313,16 +1363,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
 <div class="toast" id="toast"></div>
 
-<!-- ===== Auth Modal ===== -->
-<div class="auth-landing" id="authOverlay">
-  <div class="brand">
-    <span class="brand-icon">📚</span>
-    <div class="brand-name">WanXue 万学</div>
-    <div class="brand-desc">对话式结构化学习平台<br>登录后开始学习之旅</div>
-  </div>
-  <div class="auth-card" id="authModal">
-    <button class="close-btn" id="authCloseBtn">×</button>
-    <div class="auth-title" id="authTitle">登录</div>
+<!-- ===== Auth Tabs inside auth-card ===== -->
     <div class="auth-tabs" id="authTabs">
       <button class="auth-tab active" data-tab="login">登录</button>
       <button class="auth-tab" data-tab="register">注册</button>
@@ -2424,15 +2465,14 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     return r.json();
   }
 
-  // 打开认证 Modal
+  // 打开认证 Modal/首页
   function openAuthModal(tab) {
     authOverlay.classList.add('show');
-    // 隐藏主 APP 的内容区域（只保留 auth-landing 可见）
-    document.querySelectorAll('#app > *:not(.auth-landing)').forEach(function(el) {
-      el.style.display = 'none';
-    });
-    // 修正 auth-landing 在 #app 内部的显示
     authOverlay.style.display = 'flex';
+    // 如果 auth-landing 在 #app 外部，不需要隐藏 #app
+    // 但为了保险，隐藏 #app（auth-landing 独立显示）
+    var appEl = document.getElementById('app');
+    if (appEl) appEl.style.display = 'none';
     switchTab(tab || 'login');
     authError.classList.remove('show');
     authError.textContent = '';
@@ -2441,10 +2481,9 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   function closeAuthModal() {
     authOverlay.classList.remove('show');
     authOverlay.style.display = '';
-    // 恢复主 APP 所有子元素
-    document.querySelectorAll('#app > *').forEach(function(el) {
-      el.style.display = '';
-    });
+    // 恢复 #app 显示
+    var appEl = document.getElementById('app');
+    if (appEl) appEl.style.display = '';
   }
 
   // Tab 切换
