@@ -79,11 +79,13 @@ class GenerateRequest(BaseModel):
     topic: str
     age: str = "成人"
     goal: str = "入门科普"
+    difficulty: str = "3-标准"  # 1-入门 / 2-基础 / 3-标准 / 4-进阶 / 5-挑战
 
 
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    difficulty: Optional[str] = None  # 用户选择的难度等级
 
 
 class BindCourseRequest(BaseModel):
@@ -147,7 +149,7 @@ async def generate_course(req: GenerateRequest):
 
     # 1. 调用引擎生成课程数据
     course = await engine.generate_course(
-        topic=req.topic, age=req.age, goal=req.goal
+        topic=req.topic, age=req.age, goal=req.goal, difficulty=req.difficulty
     )
 
     course_id = course.get("_course_id", WanXueEngine._slugify(req.topic))
@@ -549,6 +551,9 @@ async def chat_message(req: ChatRequest):
     async def event_gen():
         try:
             yield f"event: meta\ndata: {json.dumps({'session_id': s.session_id})}\n\n"
+            # 如果客户端传了 difficulty，设置到 session.user_profile
+            if req.difficulty and req.difficulty in ["1-入门","2-基础","3-标准","4-进阶","5-挑战"]:
+                s.user_profile["difficulty_level"] = req.difficulty
             async for ev in _c.handle_user_message(req.message, s):
                 yield f"event: {ev['event']}\ndata: {json.dumps(ev['data'], ensure_ascii=False)}\n\n"
             yield "event: done\ndata: {}\n\n"
