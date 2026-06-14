@@ -14,7 +14,15 @@ _CSS = """
   --bg: #fff8e7; --primary: #ff6b6b; --secondary: #4ecdc4;
   --accent: #ffe66d; --text: #2d3047; --text-soft: #6c6f7d;
   --card-bg: #ffffff; --shadow: 0 4px 16px rgba(45, 48, 71, 0.08);
+  /* 字体大小变量（支持用户调整） */
+  --fs-body: 19px; --fs-card-title: 28px; --fs-card-h3: 22px;
+  --fs-bar-title: 17px; --fs-tab: 13px;
 }
+/* 字体大小模式 */
+html[data-fs="sm"]  { --fs-body: 16px; --fs-card-title: 24px; --fs-card-h3: 19px; --fs-bar-title: 15px; --fs-tab: 12px; }
+html[data-fs="md"]  { --fs-body: 19px; --fs-card-title: 28px; --fs-card-h3: 22px; --fs-bar-title: 17px; --fs-tab: 13px; }
+html[data-fs="lg"]  { --fs-body: 22px; --fs-card-title: 32px; --fs-card-h3: 25px; --fs-bar-title: 19px; --fs-tab: 14px; }
+html[data-fs="xl"]  { --fs-body: 25px; --fs-card-title: 36px; --fs-card-h3: 28px; --fs-bar-title: 21px; --fs-tab: 15px; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
   height: 100%;
@@ -23,7 +31,7 @@ html, body {
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   background: var(--bg); color: var(--text);
-  line-height: 1.85; font-size: 19px;
+  line-height: 1.85; font-size: var(--fs-body);
   touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
@@ -43,9 +51,23 @@ body {
   z-index: 100;
 }
 .top-bar h1 {
-  color: var(--text); font-size: 17px; font-weight: bold;
+  color: var(--text); font-size: var(--fs-bar-title); font-weight: bold;
   text-shadow: 0 1px 2px rgba(255,255,255,0.3);
-  margin-bottom: 8px; text-align: center;
+  text-align: center; flex: 1; min-width: 0;
+}
+/* 字体大小切换按钮 */
+.fs-toggle {
+  flex-shrink: 0; width: 32px; height: 32px; border: none;
+  border-radius: 50%; background: rgba(255,255,255,0.7);
+  color: var(--text); font-size: 13px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center;
+  justify-content: center; transition: all 0.2s;
+  font-family: inherit; margin-left: auto;
+}
+.fs-toggle:hover { background: rgba(255,255,255,0.95); }
+.fs-toggle:active { transform: scale(0.9); }
+.top-bar-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
 }
 .chapter-tabs {
   display: flex; gap: 6px; overflow-x: auto;
@@ -57,7 +79,7 @@ body {
   flex-shrink: 0;
   padding: 6px 12px; border: none; border-radius: 16px;
   background: rgba(255,255,255,0.6); color: var(--text);
-  font-size: 13px; font-weight: 600; white-space: nowrap;
+  font-size: var(--fs-tab); font-weight: 600; white-space: nowrap;
   font-family: inherit; cursor: pointer;
   transition: all 0.2s;
 }
@@ -102,14 +124,14 @@ body {
 }
 /* 卡片标题 */
 .card h2 {
-  color: var(--primary); font-size: 28px; margin-bottom: 18px;
+  color: var(--primary); font-size: var(--fs-card-title); margin-bottom: 18px;
   display: flex; align-items: center; gap: 8px;
   line-height: 1.4;
 }
-.card h3 { color: var(--secondary); font-size: 22px; margin: 18px 0 10px; line-height: 1.4; }
-.card p { margin: 14px 0; color: var(--text); font-size: 19px; line-height: 1.85; }
+.card h3 { color: var(--secondary); font-size: var(--fs-card-h3); margin: 18px 0 10px; line-height: 1.4; }
+.card p { margin: 14px 0; color: var(--text); font-size: var(--fs-body); line-height: 1.85; }
 .card ul, .card ol { margin: 14px 0; padding-left: 22px; }
-.card li { margin: 8px 0; font-size: 19px; line-height: 1.8; }
+.card li { margin: 8px 0; font-size: var(--fs-body); line-height: 1.8; }
 .card strong { color: var(--primary); }
 .card .emoji-big {
   font-size: 56px; text-align: center; display: block; margin: 16px 0;
@@ -699,6 +721,25 @@ document.addEventListener('keydown', function(e) {
 });
 
 // 触摸滑动
+// ===== 字体大小控制 =====
+(function() {
+  var FS_SIZES = ['sm', 'md', 'lg', 'xl'];
+  var saved = localStorage.getItem(storageKey + '_fs');
+  var idx = FS_SIZES.indexOf(saved);
+  if (idx < 0) idx = 1;
+  document.documentElement.setAttribute('data-fs', FS_SIZES[idx]);
+  var btn = document.getElementById('fsToggle');
+  if (btn) {
+    btn.addEventListener('click', function() {
+      idx = (idx + 1) % FS_SIZES.length;
+      var size = FS_SIZES[idx];
+      document.documentElement.setAttribute('data-fs', size);
+      localStorage.setItem(storageKey + '_fs', size);
+    });
+  }
+})();
+
+// 触摸滑动
 (function() {
   var touchStartX = 0, touchStartY = 0;
   var cardArea = document.querySelector('.card-area');
@@ -769,7 +810,10 @@ def render_html(course_data: dict) -> str:
 </head>
 <body>
 <div class="top-bar">
-  <h1>{title_safe}</h1>
+  <div class="top-bar-row">
+    <h1>{title_safe}</h1>
+    <button class="fs-toggle" id="fsToggle" title="调整字体大小">Aa</button>
+  </div>
   <nav class="chapter-tabs" id="chapter-tabs">
 {chapter_tabs_html}
   </nav>
