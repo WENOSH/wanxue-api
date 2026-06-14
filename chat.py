@@ -20,10 +20,10 @@ import httpx
 
 try:
     from . import prompts
-    from .config import LLM_API_KEY, LLM_MODEL, LLM_BASE_URL, LLM_MAX_TOKENS, LLM_TEMPERATURE
+    from .config import LLM_API_KEY, LLM_MODEL, LLM_BASE_URL, LLM_MAX_TOKENS, LLM_TEMPERATURE, OUTPUT_DIR
 except ImportError:
     import prompts
-    from config import LLM_API_KEY, LLM_MODEL, LLM_BASE_URL, LLM_MAX_TOKENS, LLM_TEMPERATURE
+    from config import LLM_API_KEY, LLM_MODEL, LLM_BASE_URL, LLM_MAX_TOKENS, LLM_TEMPERATURE, OUTPUT_DIR
 
 log = logging.getLogger("wanxue.chat")
 
@@ -283,6 +283,23 @@ async def handle_user_message(
             session.chapter_current = 0
             session.user_profile["last_topic"] = topic
             session.add_msg("system", f"已生成《{topic}》{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            # ★ 保存课程到磁盘（供分享链接和直接查看使用）
+            try:
+                from wanxue_api.renderer import render_html
+                from pathlib import Path
+                course_id = course.get("_course_id", WanXueEngine._slugify(topic))
+                course_dir = OUTPUT_DIR / course_id
+                course_dir.mkdir(parents=True, exist_ok=True)
+                html_content = render_html(course)
+                clean_html = html_content.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+                (course_dir / "index.html").write_text(clean_html, encoding="utf-8")
+                (course_dir / "course.json").write_text(
+                    json.dumps(course, ensure_ascii=False, indent=2).encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace'),
+                    encoding="utf-8"
+                )
+                log.info(f"课程已保存到磁盘: {course_id}")
+            except Exception as save_err:
+                log.warning(f"保存课程到磁盘失败（不影响对话）: {save_err}")
             # ★ 关键改动：规划 3 层嵌入式验证
             plans = await plan_checks(course)
             session.check_plans = plans
