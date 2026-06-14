@@ -13,12 +13,14 @@ try:
         LLM_API_KEY, LLM_MODEL, LLM_BASE_URL,
         LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER
     )
+    from wanxue_api.wikipedia_helper import enrich_course_context
 except ImportError:
     import prompts
     from config import (
         LLM_API_KEY, LLM_MODEL, LLM_BASE_URL,
         LLM_MAX_TOKENS, LLM_TEMPERATURE, MAX_CHAPTERS, MAX_CARDS_PER_CHAPTER
     )
+    from wikipedia_helper import enrich_course_context
 
 log = logging.getLogger("wanxue.engine")
 
@@ -114,10 +116,19 @@ class WanXueEngine:
             topic=topic, age=age, goal=goal
         )
 
+        # 注入维基百科知识（减少幻觉）
+        wiki_context = enrich_course_context(topic)
+        system_content = prompts.SYSTEM_PROMPT
+        if wiki_context:
+            system_content = f"{prompts.SYSTEM_PROMPT}\n\n{wiki_context}"
+            log.info(f"Wikipedia: 找到 '{topic}' 的相关内容（{len(wiki_context)} 字）")
+        else:
+            log.info(f"Wikipedia: 未找到 '{topic}' 的相关内容")
+
         payload = {
             "model": LLM_MODEL,
             "messages": [
-                {"role": "system", "content": prompts.SYSTEM_PROMPT},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": user_prompt}
             ],
             "max_tokens": LLM_MAX_TOKENS,
