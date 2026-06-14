@@ -2362,7 +2362,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // ★ 登录守卫：未登录则弹出登录框
   function requireLogin() {
     if (!state.token || !state.user) {
-      showAuthModal();
+      openAuthModal('login');
       return false;
     }
     return true;
