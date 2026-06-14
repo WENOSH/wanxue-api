@@ -406,64 +406,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   transform: scale(0.98);
 }
 
-/* ===== Difficulty Selector ===== */
-.difficulty-selector {
-  margin: 12px 0;
-  padding: 10px;
-  background: rgba(78, 205, 196, 0.08);
-  border-radius: 12px;
-  border: 1px solid rgba(78, 205, 196, 0.2);
-}
-.difficulty-selector .diff-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-soft);
-  margin-bottom: 8px;
-  text-align: center;
-}
-.difficulty-selector .diff-options {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-.difficulty-selector .diff-btn {
-  flex: 1;
-  min-width: 60px;
-  padding: 6px 4px;
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.2s;
-  font-family: var(--font);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-.difficulty-selector .diff-btn:active { transform: scale(0.95); }
-.difficulty-selector .diff-btn .diff-label-text {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-}
-.difficulty-selector .diff-btn .diff-desc {
-  font-size: 9px;
-  color: var(--text-light);
-  white-space: nowrap;
-}
-.difficulty-selector .diff-btn.active {
-  border-color: var(--secondary);
-  background: linear-gradient(135deg, rgba(78,205,196,0.15), rgba(78,205,196,0.08));
-  box-shadow: 0 2px 8px rgba(78,205,196,0.2);
-}
-.difficulty-selector .diff-btn.active .diff-label-text {
-  color: var(--secondary-dark);
-}
-
 /* ===== Difficulty Feedback Bar ===== */
 .diff-feedback-bar {
   margin-top: 12px;
@@ -1566,57 +1508,27 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   const WELCOME = {
     emoji: '👋',
     title: '你好！我是万学',
-    subtitle: '一个会思考的笔记本。说一个主题开始吧！',
+    subtitle: '登录后开始学习之旅！说一个主题开始吧！',
     suggestions: [
       '📚 我想学相对论',
       '🤔 刚才黑洞那个没懂，再讲讲',
       '✏️ 考考我',
       '🌍 翻译成英文'
-    ],
-    difficulties: [
-      {key: '1-入门', label: '🌱 入门', desc: '零基础轻松学'},
-      {key: '2-基础', label: '📘 基础', desc: '系统学'},
-      {key: '3-标准', label: '📗 标准', desc: '全面深入（默认）'},
-      {key: '4-进阶', label: '📕 进阶', desc: '专业深度'},
-      {key: '5-挑战', label: '🔥 挑战', desc: '专家级'},
     ]
   };
 
   function showWelcome() {
     const card = document.createElement('div');
     card.className = 'welcome-card';
-    // 读取已保存的难度等级
-    const savedDiff = localStorage.getItem('wanxue_difficulty') || '3-标准';
     card.innerHTML = `
       <span class="welcome-emoji">${WELCOME.emoji}</span>
       <div class="welcome-title">${WELCOME.title}</div>
       <div class="welcome-subtitle">${WELCOME.subtitle}</div>
-      <div class="difficulty-selector">
-        <div class="diff-label">📊 选择适合你的难度（决定了课程长度和深度）</div>
-        <div class="diff-options">
-          ${WELCOME.difficulties.map(d => `
-            <button class="diff-btn ${d.key === savedDiff ? 'active' : ''}" data-diff="${d.key}" title="${d.desc}">
-              <span class="diff-label-text">${d.label}</span>
-              <span class="diff-desc">${d.desc}</span>
-            </button>
-          `).join('')}
-        </div>
-      </div>
       <div class="suggestions">
         ${WELCOME.suggestions.map(s => `<div class="suggestion" data-msg="${s.replace(/^[^\s]+ /, '')}">${s}</div>`).join('')}
       </div>
     `;
     chatContainer.appendChild(card);
-    // 难度选择器
-    card.querySelectorAll('.diff-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        card.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const diff = btn.dataset.diff;
-        localStorage.setItem('wanxue_difficulty', diff);
-        showToast(`已选难度：${btn.querySelector('.diff-label-text').textContent}`, 'info');
-      });
-    });
     // 建议按钮（仅填充输入框）
     card.querySelectorAll('.suggestion').forEach(s => {
       s.addEventListener('click', () => {
@@ -1953,6 +1865,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   async function sendMessage(text) {
     text = (text || msgInput.value).trim();
     if (!text || state.sending) return;
+    if (!requireLogin()) return;
     if (!state.sessionId) {
       try { await createSession(); } catch(e) { showToast('连接失败: '+e.message, 'error'); return; }
     }
@@ -2043,10 +1956,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
-                // 课程完成后添加难度反馈
-                setTimeout(function() {
-                  thinkingBubble.appendChild(renderDifficultyFeedback());
-                }, 500);
                 // 课程完成时自动同步学习记录
                 setTimeout(function() {
                   syncLearningRecord({
@@ -2282,33 +2191,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     return wrap;
   }
 
-  // ===== 难度反馈（课程学完后弹出） =====
-  function renderDifficultyFeedback() {
-    const wrap = document.createElement('div');
-    wrap.className = 'diff-feedback-bar';
-    wrap.innerHTML = `
-      <div class="fb-label">📊 这个课程的难度怎么样？你的反馈会帮我以后自动匹配合适的难度</div>
-      <div class="fb-options">
-        <button class="fb-btn too-easy" data-fb="太简单了">😅 太简单</button>
-        <button class="fb-btn just-right" data-fb="难度正好">👍 正好</button>
-        <button class="fb-btn too-hard" data-fb="太难了">😰 太难了</button>
-      </div>
-    `;
-    wrap.querySelectorAll('.fb-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        // 把反馈通过聊天发送
-        const text = btn.dataset.fb;
-        // 先显示用户已选择
-        wrap.querySelectorAll('.fb-btn').forEach(b => b.disabled = true);
-        btn.style.transform = 'scale(0.95)';
-        // 自动发送到聊天
-        msgInput.value = text;
-        sendMessage();
-      });
-    });
-    return wrap;
-  }
-
   // ===== Course Viewer =====
   let viewerIframe = null;
   function openCourse(course) {
@@ -2391,6 +2273,13 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       progressFill.style.width = e.data.percent + '%';
       progressPct.textContent = e.data.percent + '%';
     }
+    // 难度反馈来自课程 iframe
+    if (e.data && e.data.type === 'wanxue_difficulty_feedback' && e.data.value) {
+      // 自动发送难度反馈消息
+      msgInput.value = e.data.value;
+      sendMessage();
+      showToast('难度反馈已发送', 'info');
+    }
   });
 
   // ===== Input handlers =====
@@ -2412,6 +2301,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       showToast('请等待当前回复完成', 'info');
       return;
     }
+    if (!requireLogin()) return;
     state.sessionId = null;
     chatContainer.innerHTML = '';
     showWelcome();
@@ -2447,7 +2337,17 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   }
   loadAuthState();
 
+  // ★ 登录守卫：未登录则弹出登录框
+  function requireLogin() {
+    if (!state.token || !state.user) {
+      showAuthModal();
+      return false;
+    }
+    return true;
+  }
+
   // 更新 UI 显示登录/用户状态
+  function updateAuthUI() {
   function updateAuthUI() {
     if (state.user && state.token) {
       authBtn.style.display = 'none';
@@ -2881,6 +2781,8 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
   // ===== Init =====
   async function init() {
+    // 登录守卫：未登录先弹出登录框
+    if (!requireLogin()) return;
     showWelcome();
     try { await createSession(); } catch(e) { showToast('连接后端失败: '+e.message, 'error'); }
     msgInput.focus();
