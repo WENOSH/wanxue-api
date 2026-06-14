@@ -160,6 +160,20 @@ body {
 .card .answer-btn.correct { background: #6bcf7f; }
 .card .answer-btn.wrong { background: #ff8a80; }
 .card .answer-btn:disabled { opacity: 0.5; cursor: default; }
+/* TTS 播音按钮 */
+.tts-btn {
+  position: absolute; top: 12px; right: 12px;
+  width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: rgba(255, 107, 107, 0.12); color: var(--primary);
+  font-size: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: all 0.2s; z-index: 10;
+  font-family: inherit;
+}
+.tts-btn:hover { background: rgba(78, 205, 196, 0.3); transform: scale(1.1); }
+.tts-btn:active { transform: scale(0.9); }
+.tts-btn.speaking { background: var(--secondary); color: #fff; animation: tts-pulse 1s infinite; }
+@keyframes tts-pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 .card .feedback {
   margin-top: 12px; padding: 12px; border-radius: 12px; font-size: 18px;
   display: none;
@@ -439,29 +453,85 @@ function switchChapter(ch) {
 }
 
 // quiz 互动
+// ===== TTS 朗读 =====
+function speakCard(btn) {
+  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    btn.classList.remove('speaking');
+    return;
+  }
+  var card = btn.closest('.card');
+  if (!card) return;
+  // 提取卡片文字内容（去掉按钮本身和嵌套按钮文本）
+  var text = '';
+  var children = card.childNodes;
+  for (var i = 0; i < children.length; i++) {
+    if (children[i].nodeType === 3) { // text node
+      text += children[i].textContent;
+    } else if (children[i].tagName !== 'BUTTON' && children[i].className !== 'diff-feedback') {
+      text += children[i].textContent || '';
+    }
+  }
+  text = text.trim().replace(/\s+/g, ' ');
+  if (!text) return;
+
+  var utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-CN';
+  utterance.rate = 0.95;
+  utterance.pitch = 1.05;
+  utterance.onstart = function() { btn.classList.add('speaking'); };
+  utterance.onend = function() { btn.classList.remove('speaking'); };
+  utterance.onerror = function() { btn.classList.remove('speaking'); };
+  window.speechSynthesis.speak(utterance);
+}
+
 function checkAnswer(btn, isCorrect, fbId) {
   var fb = document.getElementById(fbId);
-  if (!fb) return;
+  var box = btn.closest('.game-box');
+  if (!fb || !box) return;
+
+  // 禁用所有按钮，防止重复点击（但保留查看）
+  var btns = box.querySelectorAll('.answer-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+  btn.classList.add(isCorrect ? 'correct' : 'wrong');
+
+  // 显示当前选项的反馈
   if (isCorrect) {
     fb.className = 'feedback show good';
-    fb.innerHTML = '\uD83C\uDF89 <strong>答对啦！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
-    btn.classList.add('correct');
-    // 答对后禁用所有按钮
-    var box = btn.closest('.game-box');
-    if (box) {
-      var btns = box.querySelectorAll('.answer-btn');
-      for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
-    }
+    fb.innerHTML = '🎉 <strong>答对了！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
   } else {
     fb.className = 'feedback show bad';
-    fb.innerHTML = '\uD83E\uDD14 再想想～ ' + (btn.getAttribute('data-good') || '不对哦，再试试！');
-    btn.classList.add('wrong');
-    // 答错 1.5 秒后恢复，允许重选
-    setTimeout(function() {
-      btn.classList.remove('wrong');
-      fb.className = 'feedback';
-      fb.innerHTML = '';
-    }, 1500);
+    fb.innerHTML = '🤔 ' + (btn.getAttribute('data-good') || '不对哦');
+  }
+
+  // 显示所有选项的解释
+  var explainDiv = box.querySelector('.explain-all');
+  if (!explainDiv) {
+    explainDiv = document.createElement('div');
+    explainDiv.className = 'explain-all';
+    explainDiv.style.cssText = 'margin-top:12px;padding:10px;background:#f8f5f0;border-radius:10px;font-size:13px;line-height:1.6;';
+    box.appendChild(explainDiv);
+  }
+  var explainHtml = '<div style="font-weight:600;margin-bottom:6px;color:#2d3047">📖 各选项解析：</div>';
+  for (var i = 0; i < btns.length; i++) {
+    var label = String.fromCharCode(65 + i); // A, B, C, D
+    var explain = btns[i].getAttribute('data-explain') || '';
+    var mark = btns[i] === btn ? (isCorrect ? '✅' : '❌') : '';
+    var color = btns[i] === btn && isCorrect ? '#4ecdc4' : (btns[i] === btn ? '#ff6b6b' : '#2d3047');
+    explainHtml += '<div style="margin:4px 0;color:' + color + '"><b>' + mark + ' ' + label + '.</b> '
+      + btns[i].textContent.trim();
+    if (explain) explainHtml += ' <span style="color:#6c6f7d">— ' + explain + '</span>';
+    explainHtml += '</div>';
+  }
+  explainDiv.innerHTML = explainHtml;
+}
+
+// 跳过当前测验（跳转到下一张卡片）
+function skipQuiz(btn) {
+  var box = btn ? btn.closest('.game-box') : null;
+  if (box) {
+    // 找到skip按钮所在的卡片，然后翻到下一张
+    goto(1);
   }
 }
 
@@ -793,6 +863,19 @@ document.addEventListener('keydown', function(e) {
 // 启动
 loadProgress();
 updateUI();
+
+// 为所有 quiz 添加跳过按钮
+(function() {
+  var boxes = document.querySelectorAll('.game-box');
+  for (var i = 0; i < boxes.length; i++) {
+    // 检查是否已有跳过按钮
+    if (boxes[i].querySelector('.skip-quiz-btn')) continue;
+    var skip = document.createElement('div');
+    skip.style.cssText = 'text-align:right;margin-top:6px';
+    skip.innerHTML = '<button class="skip-quiz-btn" onclick="goto(1)" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 →</button>';
+    boxes[i].appendChild(skip);
+  }
+})();
 """
 
 
@@ -936,6 +1019,7 @@ def _build_cards_html(chapters: list) -> str:
             cards_html.append(
                 f'  <div class="card {active_cls}" id="c{global_card_id}" '
                 f'data-ch="{ch_id}" data-idx="{card_idx}" data-type="{card_type}">\n'
+                f'<button class="tts-btn" onclick="speakCard(this)" title="朗读本卡">🔊</button>\n'
                 f'{card_body}\n'
                 f'{diff_feedback_html}\n'
                 f'  </div>'
