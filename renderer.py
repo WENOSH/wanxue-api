@@ -764,6 +764,32 @@ document.addEventListener('keydown', function(e) {
   }
 })();
 
+// ===== 难度反馈按钮处理 =====
+(function() {
+  var container = document.getElementById('diffFeedback');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var btn = e.target.closest('.diff-fb-btn');
+    if (!btn) return;
+    // 禁用所有按钮
+    var allBtns = container.querySelectorAll('.diff-fb-btn');
+    for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
+    // 显示感谢信息
+    var result = container.querySelector('.diff-fb-result');
+    if (result) result.style.display = 'block';
+    // 通过 postMessage 通知父页面（app.html）
+    var fbValue = btn.getAttribute('data-fb');
+    try {
+      window.parent.postMessage({
+        type: 'wanxue_difficulty_feedback',
+        value: fbValue === 'too_easy' ? '太简单了' : (fbValue === 'too_hard' ? '太难了' : '难度正好')
+      }, '*');
+    } catch(e) {
+      // 如果不在 iframe 中（直接查看课程），忽略
+    }
+  });
+})();
+
 // 启动
 loadProgress();
 updateUI();
@@ -876,9 +902,10 @@ def _build_cards_html(chapters: list) -> str:
     sections = []
     global_card_id = 0
 
-    for ch in chapters:
+    for ch_idx, ch in enumerate(chapters):
         ch_id = ch.get("id", 1)
         is_first_chapter = ch_id == 1
+        is_last_chapter = ch_idx == len(chapters) - 1
         display_style = "" if is_first_chapter else ' style="display:none;"'
 
         cards_html = []
@@ -889,10 +916,28 @@ def _build_cards_html(chapters: list) -> str:
             card_body = card.get("body", "<p>内容待补充</p>")
             card_type = card.get("type", "concept")
 
+            # 最后一章的 reward 卡片 → 添加难度反馈
+            is_last_reward = is_last_chapter and card_type == "reward" and card_idx == len(cards) - 1
+            diff_feedback_html = ""
+            if is_last_reward:
+                diff_feedback_html = """
+  <div class="diff-feedback" id="diffFeedback" style="margin-top:20px;padding:16px;background:linear-gradient(135deg,#fff8e7 0%,#ffe9b3 100%);border-radius:14px;border:1px solid #ffe66d;text-align:center;">
+    <div style="font-size:14px;font-weight:700;color:#2d3047;margin-bottom:10px">📊 这个课程的难度怎么样？</div>
+    <div style="font-size:12px;color:#6c6f7d;margin-bottom:12px">你的反馈会帮我以后自动匹配合适的难度</div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button class="diff-fb-btn" data-fb="too_easy" style="padding:10px 20px;border:1.5px solid #ff6b6b;border-radius:10px;background:#fff;color:#ff6b6b;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">😅 太简单</button>
+      <button class="diff-fb-btn" data-fb="just_right" style="padding:10px 20px;border:1.5px solid #4ecdc4;border-radius:10px;background:#fff;color:#4ecdc4;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">👍 正好</button>
+      <button class="diff-fb-btn" data-fb="too_hard" style="padding:10px 20px;border:1.5px solid #9b59b6;border-radius:10px;background:#fff;color:#9b59b6;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">😰 太难了</button>
+    </div>
+    <div class="diff-fb-result" style="margin-top:10px;font-size:13px;color:#2d3047;display:none">已记录你的难度偏好，谢谢反馈！🎉</div>
+  </div>
+"""
+
             cards_html.append(
                 f'  <div class="card {active_cls}" id="c{global_card_id}" '
                 f'data-ch="{ch_id}" data-idx="{card_idx}" data-type="{card_type}">\n'
                 f'{card_body}\n'
+                f'{diff_feedback_html}\n'
                 f'  </div>'
             )
             global_card_id += 1
