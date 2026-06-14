@@ -2427,6 +2427,12 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // 打开认证 Modal
   function openAuthModal(tab) {
     authOverlay.classList.add('show');
+    // 隐藏主 APP 的内容区域（只保留 auth-landing 可见）
+    document.querySelectorAll('#app > *:not(.auth-landing)').forEach(function(el) {
+      el.style.display = 'none';
+    });
+    // 修正 auth-landing 在 #app 内部的显示
+    authOverlay.style.display = 'flex';
     switchTab(tab || 'login');
     authError.classList.remove('show');
     authError.textContent = '';
@@ -2434,6 +2440,11 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
   function closeAuthModal() {
     authOverlay.classList.remove('show');
+    authOverlay.style.display = '';
+    // 恢复主 APP 所有子元素
+    document.querySelectorAll('#app > *').forEach(function(el) {
+      el.style.display = '';
+    });
   }
 
   // Tab 切换
