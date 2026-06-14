@@ -40,7 +40,7 @@ class ChatSession:
     last_active: float = field(default_factory=time.time)
     history: list[dict] = field(default_factory=list)  # [{role, content, intent, ...}]
     current_course: Optional[dict] = None  # 最近生成的课程数据
-    user_profile: dict = field(default_factory=dict)  # {age, goal, math_level, ...}
+    user_profile: dict = field(default_factory=dict)  # {age, goal, difficulty_level, ...}
     # 嵌入式验证相关 (2026-06-13 新增)
     check_plans: list = field(default_factory=list)  # List[CheckPlan]
     skip_levels: set = field(default_factory=set)  # 用户"先不考"过的层
@@ -116,7 +116,9 @@ def make_progress(session: ChatSession) -> dict:
 INTENT_KEYWORDS = {
     "generate": ["我想学", "教我", "讲讲", "介绍", "什么是", "什么是？", "想了解", "开始学"],
     "deepen": ["再深", "深一点", "更深入", "详细讲", "深入讲", "展开讲", "详细说", "为什么", "本质"],
-    "simplify": ["简单", "通俗", "小白", "零基础", "小学", "初中", "难", "不懂", "没懂", "没明白", "听不懂", "换个讲法"],
+    # ⚠️ "太简单了"先于"简单"匹配：用户说"太简单"意思是想要更难的内容
+    # 而"再简单点/通俗点"才是要更简单
+    "simplify": ["再简单", "简单点", "通俗", "小白", "零基础", "小学", "初中", "没懂", "没明白", "听不懂", "换个讲法", "太难了", "太难"],
     "quiz": ["考考我", "测试", "出题", "做题", "练习", "测验", "quiz"],
     "translate": ["翻译", "英文", "English", "日文", "Japanese", "中文", "Chinese"],
     "explore_more": ["例子", "举例", "应用", "哪里用", "怎么用"],
@@ -126,12 +128,19 @@ INTENT_KEYWORDS = {
     "prev": ["上一章", "上一", "回到"],
     "skip_check": ["先不考", "不要考", "跳过", "别测了", "不测了", "不用测", "skip"],
     "answer": ["对", "是的", "正确", "✓", "yes", "✔", "yep", "yeah", "不对", "不是", "错了", "错", "no", "nope", "选a", "选b", "选c", "选d", "a", "b", "c", "d"],
+    # 难度反馈 - 学完后用户对难度的评价
+    "difficulty_feedback": ["正好", "刚好", "适中", "偏难", "偏易", "简单适中", "难度反馈", "试试新难度"],
 }
 
 
 def detect_intent(text: str) -> str:
     """轻量意图识别 - 基于关键词"""
     text = text.lower().strip()
+    
+    # ★ 优先匹配：如果包含"简单了" 或 "太简单" → 是"太容易"的意思，要更难
+    if "太简单" in text or text.startswith("简单了"):
+        return "deepen"
+    
     for intent, kws in INTENT_KEYWORDS.items():
         if any(kw in text for kw in kws):
             return intent
@@ -212,6 +221,7 @@ async def generate_guide(user_msg: str, session: ChatSession, api_key: str) -> d
         "generate": f"好的，正在为你生成《{topic}》课程... ✨",
         "deepen": f"好的，让我更深入地讲讲关于「{topic}」的内容...",
         "simplify": "好的，我用更通俗的方式重新讲 ✏️",
+        "difficulty_feedback": "好的，正在根据你的反馈调整课程难度...",
         "quiz": f"好的，正在为你生成关于《{topic}》的 3 道测验题...",
         "translate": "好的，正在生成翻译版本 🌍",
         "explore_more": f"好的，我加几个关于「{topic}」的实际例子...",
@@ -260,7 +270,11 @@ async def handle_user_message(
     # 2) 根据意图分支
     if intent == "generate":
         # 直接走 engine 生成课程，绑定到会话
-        yield {"event": "thinking", "data": f"正在生成《{topic}》课程 5 章 35 卡片..."}
+        from wanxue_api.config import get_difficulty_config
+        diff_key = session.user_profile.get("difficulty", session.user_profile.get("difficulty_level", "3-标准"))
+        diff_cfg = get_difficulty_config(diff_key)
+        total_est = diff_cfg["chapters"] * diff_cfg["cards"]
+        yield {"event": "thinking", "data": f"正在生成《{topic}》课程 {diff_cfg['chapters']} 章约 {total_est} 卡片（{diff_cfg['label']}）..."}
         try:
             from wanxue_api.engine import WanXueEngine
             from wanxue_api.embedded_check import (
@@ -270,7 +284,7 @@ async def handle_user_message(
             age = session.user_profile.get("age", "成人")
             goal = session.user_profile.get("goal", "入门科普")
             # 调用 engine（不是流式的，但用户期待立刻看到）
-            course = await engine.generate_course(topic=topic, age=age, goal=goal)
+            course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
             session.current_course = course
             # 重新计算 total_cards + 记录到 session
             course["_total_cards"] = sum(
@@ -336,22 +350,151 @@ async def handle_user_message(
             yield {"event": "error", "data": f"课程生成失败: {e}"}
         return
 
-    elif intent in ("deepen", "explore_more"):
+    elif intent == "simplify":
+        if not session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
+            return
+        # 降一档难度重新生成完整课程
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        current_diff = session.user_profile.get("difficulty_level", "3-标准")
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = max(0, current_idx - 1)
+        new_diff = diff_keys[new_idx]
+        session.user_profile["difficulty_level"] = new_diff
+        new_cfg = get_difficulty_config(new_diff)
+        yield {"event": "thinking", "data": f"正在用更通俗的方式重新生成课程（{new_cfg['label']}）..."}
+        try:
+            from wanxue_api.engine import WanXueEngine
+            engine = WanXueEngine()
+            age = session.user_profile.get("age", "成人")
+            goal = session.user_profile.get("goal", "入门科普")
+            course = await engine.generate_course(
+                topic=topic, age=age, goal=goal, difficulty=new_diff
+            )
+            session.current_course = course
+            course["_total_cards"] = sum(
+                len(ch.get("cards", [])) for ch in course.get("chapters", [])
+            )
+            session.total_chapters = len(course.get("chapters", []))
+            session.total_cards = course["_total_cards"]
+            session.user_profile["last_topic"] = topic
+            session.add_msg("system", f"已重新生成通俗版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            yield {
+                "event": "course_done",
+                "data": {
+                    "topic": topic,
+                    "course": course,
+                    "message": f"已重新生成通俗版《{topic}》（{new_cfg['label']}），共 {session.total_chapters} 章 {session.total_cards} 卡片",
+                    "difficulty_level": new_diff,
+                }
+            }
+        except Exception as e:
+            yield {"event": "error", "data": f"重新生成失败: {e}"}
+        return
+
+    elif intent == "deepen":
+        if not session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
+            return
+        # 升一档难度重新生成完整课程
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        current_diff = session.user_profile.get("difficulty_level", "3-标准")
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = min(len(diff_keys) - 1, current_idx + 1)
+        new_diff = diff_keys[new_idx]
+        session.user_profile["difficulty_level"] = new_diff
+        new_cfg = get_difficulty_config(new_diff)
+        yield {"event": "thinking", "data": f"正在更深入地重新生成课程（{new_cfg['label']}）..."}
+        try:
+            from wanxue_api.engine import WanXueEngine
+            engine = WanXueEngine()
+            age = session.user_profile.get("age", "成人")
+            goal = session.user_profile.get("goal", "入门科普")
+            course = await engine.generate_course(
+                topic=topic, age=age, goal=goal, difficulty=new_diff
+            )
+            session.current_course = course
+            course["_total_cards"] = sum(
+                len(ch.get("cards", [])) for ch in course.get("chapters", [])
+            )
+            session.total_chapters = len(course.get("chapters", []))
+            session.total_cards = course["_total_cards"]
+            session.user_profile["last_topic"] = topic
+            session.add_msg("system", f"已重新生成深入版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            yield {
+                "event": "course_done",
+                "data": {
+                    "topic": topic,
+                    "course": course,
+                    "message": f"已重新生成深入版《{topic}》（{new_cfg['label']}），共 {session.total_chapters} 章 {session.total_cards} 卡片",
+                    "difficulty_level": new_diff,
+                }
+            }
+        except Exception as e:
+            yield {"event": "error", "data": f"重新生成失败: {e}"}
+        return
+
+    elif intent == "difficulty_feedback":
+        # 用户学完课程后对难度做出反馈
+        if not session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "先学一门课再说感受吧～"}}
+            return
+        user_msg_lower = user_msg.lower().strip()
+        # 解析难度反馈
+        if any(w in user_msg_lower for w in ["太简单", "太浅", "偏易"]):
+            # 用户觉得太简单 → 需要更难
+            feedback_diff = "4-进阶"
+            direction = "更深更难"
+            diff_change = +1
+        elif any(w in user_msg_lower for w in ["太难", "太深", "偏难"]):
+            # 用户觉得太难 → 需要更简单
+            feedback_diff = "2-基础"
+            direction = "更简单易懂"
+            diff_change = -1
+        else:
+            # "正好" / "刚好" / "适中" → 保持，记录
+            session.user_profile["difficulty_level"] = "3-标准"
+            session.user_profile["difficulty_fit"] = "正好"
+            yield {
+                "event": "difficulty_feedback",
+                "data": {
+                    "rating": "just_right",
+                    "message": "太好了！这个难度正适合你。之后的课程都会保持这个难度水平 💪",
+                    "difficulty_level": "3-标准",
+                }
+            }
+            return
+
+        # 保存用户的难度偏好
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_diff = session.user_profile.get("difficulty_level", "3-标准")
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = max(0, min(len(diff_keys) - 1, current_idx + diff_change))
+        new_diff = diff_keys[new_idx]
+        session.user_profile["difficulty_level"] = new_diff
+        session.user_profile["difficulty_fit"] = direction
+        new_cfg = get_difficulty_config(new_diff)
+        yield {
+            "event": "difficulty_feedback",
+            "data": {
+                "rating": "too_easy" if diff_change > 0 else "too_hard",
+                "message": f"明白了！你觉得这个课程{direction}。我重新生成一个更合适难度的版本吧（{new_cfg['label']}）？或者输入「试试新难度」开始～",
+                "suggested_difficulty": new_diff,
+                "difficulty_label": new_cfg["label"],
+            }
+        }
+        return
+
+    elif intent == "explore_more":
         # 生成单张补卡
         if not session.current_course:
             yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么主题～"}}
             return
         yield {"event": "thinking", "data": f"正在补充关于「{topic}」的卡片..."}
         async for ev in stream_single_card(topic, session, api_key, card_type="concept"):
-            yield ev
-        return
-
-    elif intent == "simplify":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
-            return
-        yield {"event": "thinking", "data": "正在用更通俗的方式重讲..."}
-        async for ev in stream_difficulty_adjusted(topic, session, api_key, direction="simplify"):
             yield ev
         return
 
