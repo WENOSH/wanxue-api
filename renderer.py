@@ -1,6 +1,7 @@
 """ WanXue Course Renderer — 将课程 JSON 渲染为单文件卡片化 HTML """
 
 import html as _html
+import json
 try:
     from .sync_injector import generate_sync_js
 except ImportError:
@@ -233,6 +234,51 @@ body {
   .card { padding: 28px 32px 40px; }
   .card h2 { font-size: 26px; }
 }
+/* === 3层验证 Modal === */
+.verify-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(45, 48, 71, 0.6); z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.verify-overlay.active { display: flex; }
+.verify-modal {
+  background: #fff; border-radius: 16px; padding: 28px 24px;
+  max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.verify-modal h3 { font-size: 18px; margin-bottom: 12px; color: #2d3047; }
+.verify-modal p { font-size: 15px; line-height: 1.7; margin-bottom: 16px; color: #2d3047; }
+.verify-modal textarea {
+  width: 100%; min-height: 80px; border: 1.5px solid #ddd;
+  border-radius: 8px; padding: 10px; font-size: 15px;
+  font-family: inherit; resize: vertical;
+}
+.verify-btn {
+  display: inline-block; padding: 10px 24px; border: none;
+  border-radius: 20px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  margin-right: 8px; margin-top: 12px;
+}
+.verify-btn.primary { background: #ff6b6b; color: #fff; }
+.verify-btn.primary:hover { opacity: 0.85; }
+.verify-btn.secondary { background: #4ecdc4; color: #fff; }
+.verify-btn:disabled { opacity: 0.5; cursor: default; }
+.verify-feedback { margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 14px; }
+.verify-feedback.correct { background: #e0ffe0; color: #2d8a4e; }
+.verify-feedback.wrong { background: #ffe0e0; color: #d63333; }
+.verify-option {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 14px; margin-bottom: 8px;
+  border: 1.5px solid #ddd; border-radius: 8px;
+  background: #fff; font-size: 15px; cursor: pointer;
+  transition: all 0.15s;
+}
+.verify-option:hover { border-color: #4ecdc4; background: #f0fdfa; }
+.verify-option.selected { border-color: #ff6b6b; background: #fff0f0; }
+.verify-option.correct { border-color: #2d8a4e; background: #e0ffe0; }
+.verify-option.wrong { border-color: #d63333; background: #ffe0e0; }
+.badge { font-size: 48px; text-align: center; margin: 16px 0; }
 """
 
 
@@ -323,6 +369,7 @@ function gotoCard(ch, idx) {
   currentIdx = idx;
   saveProgress();
   updateUI();
+  _checkVerification(ch, idx);
 }
 
 // 翻页
@@ -337,6 +384,7 @@ function goto(direction) {
     }
     saveProgress();
     updateUI();
+    _checkVerification(currentCh, currentIdx);
     return;
   }
   if (newIdx >= total) {
@@ -349,12 +397,14 @@ function goto(direction) {
     }
     saveProgress();
     updateUI();
+    _checkVerification(currentCh, currentIdx);
     return;
   }
   // 同章翻页
   currentIdx = newIdx;
   saveProgress();
   updateUI();
+  _checkVerification(currentCh, currentIdx);
 }
 
 // 章节切换
@@ -384,6 +434,251 @@ function checkAnswer(btn, isCorrect, fbId) {
   if (box) {
     var btns = box.querySelectorAll('.answer-btn');
     for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+  }
+}
+
+// ===== 3层验证系统 =====
+var _vL1Done = {};
+var _vL2Done = false;
+var _vL3Done = false;
+
+// 从 localStorage 恢复验证状态
+(function() {
+  var v = localStorage.getItem(STORAGE_KEY + '_verify');
+  if (v) {
+    try {
+      var d = JSON.parse(v);
+      _vL1Done = d.L1 || {};
+      _vL2Done = d.L2 || false;
+      _vL3Done = d.L3 || false;
+    } catch(e) {}
+  }
+})();
+
+function _saveVerifyState() {
+  localStorage.setItem(STORAGE_KEY + '_verify', JSON.stringify({
+    L1: _vL1Done, L2: _vL2Done, L3: _vL3Done
+  }));
+}
+
+function _chapterKeys() {
+  var keys = [];
+  for (var k in CHAPTER_DATA) {
+    if (k !== '_verification' && CHAPTER_DATA.hasOwnProperty(k)) keys.push(Number(k));
+  }
+  keys.sort(function(a,b){return a-b;});
+  return keys;
+}
+
+function _maxChapter() {
+  var keys = _chapterKeys();
+  return keys.length > 0 ? keys[keys.length - 1] : 1;
+}
+
+// 检查是否应该触发验证
+function _checkVerification(ch, idx) {
+  var verifyData = CHAPTER_DATA._verification;
+  if (!verifyData) return;
+  if (document.querySelector('.verify-overlay.active')) return; // 已有 modal 打开
+
+  // L1: 每章第3张卡片（idx==2）
+  if (verifyData.L1 && !_vL1Done[ch]) {
+    var item = null;
+    for (var vi = 0; vi < verifyData.L1.length; vi++) {
+      if (verifyData.L1[vi].chapter === ch) { item = verifyData.L1[vi]; break; }
+    }
+    if (item && idx === 2) {
+      _showL1Modal(ch, item);
+      return;
+    }
+  }
+
+  // L2: 第3章最后一张卡片
+  if (verifyData.L2 && !_vL2Done && ch === 3) {
+    var chCards = CHAPTER_DATA[ch] ? CHAPTER_DATA[ch].total : 0;
+    if (idx === chCards - 1) {
+      _showL2Modal();
+      return;
+    }
+  }
+
+  // L3: 最后一张卡片（全课程）
+  if (verifyData.L3 && !_vL3Done) {
+    var totalCh = _maxChapter();
+    if (ch === totalCh) {
+      var lastCards = CHAPTER_DATA[totalCh] ? CHAPTER_DATA[totalCh].total : 0;
+      if (idx === lastCards - 1) {
+        _showL3Modal();
+        return;
+      }
+    }
+  }
+}
+
+// L1 Modal
+function _showL1Modal(ch, item) {
+  var overlay = document.getElementById('verifyContainer');
+  var keyword = item.keyword || '';
+  var question = (item.question || '刚才提到的关键词，你能用自己的话说说它是什么意思吗？').replace('[关键词]', keyword);
+  overlay.innerHTML = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83D\uDCDD 关键概念反问</h3><p>' + question + '</p><textarea id="l1Input" placeholder="写下你的理解..."></textarea><div><button class="verify-btn primary" id="l1SubmitBtn">\u2714\uFE0F 确认</button></div><div id="l1Feedback" class="verify-feedback" style="display:none;"></div><button class="verify-btn secondary" id="l1ContinueBtn" style="display:none;">\u25B6\uFE0F 继续学习</button></div></div>';
+  document.getElementById('l1SubmitBtn').onclick = function() {
+    var input = document.getElementById('l1Input');
+    var fb = document.getElementById('l1Feedback');
+    fb.style.display = 'block';
+    fb.className = 'verify-feedback correct';
+    fb.innerHTML = '\uD83D\uDC4D 说得很棒！你理解了"' + keyword + '"的核心意思。带着这个理解继续学习吧！';
+    document.getElementById('l1SubmitBtn').disabled = true;
+    input.disabled = true;
+    document.getElementById('l1ContinueBtn').style.display = 'inline-block';
+  };
+  document.getElementById('l1ContinueBtn').onclick = function() {
+    var ov = document.querySelector('.verify-overlay');
+    if (ov) { ov.classList.remove('active'); ov.parentNode.removeChild(ov); }
+    _vL1Done[ch] = true;
+    _saveVerifyState();
+  };
+}
+
+// L2 Modal
+function _showL2Modal() {
+  var verifyData = CHAPTER_DATA._verification;
+  if (!verifyData || !verifyData.L2) return;
+  var questions = verifyData.L2.questions || [];
+  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83D\uDCDD 章节小测</h3><p>做完这两道题，才能继续第4章哦！</p>';
+  for (var qi = 0; qi < questions.length; qi++) {
+    var q = questions[qi];
+    html += '<div class="l2-question" data-qidx="' + qi + '"><p><strong>' + (qi + 1) + '. ' + q.q + '</strong></p>';
+    for (var oi = 0; oi < q.options.length; oi++) {
+      html += '<button class="verify-option" data-q="' + qi + '" data-oi="' + oi + '">' + (String.fromCharCode(65 + oi)) + '. ' + q.options[oi] + '</button>';
+    }
+    html += '<div id="l2fb' + qi + '" class="verify-feedback" style="display:none;"></div></div>';
+  }
+  html += '<div id="l2Result" style="display:none;"></div></div></div>';
+  var overlay = document.getElementById('verifyContainer');
+  overlay.innerHTML = html;
+
+  var correctCount = 0;
+  var answered = {};
+  var optionBtns = overlay.querySelectorAll('.verify-option');
+  for (var bi = 0; bi < optionBtns.length; bi++) {
+    (function(btn) {
+      btn.onclick = function() {
+        var qi = parseInt(btn.getAttribute('data-q'));
+        var oi = parseInt(btn.getAttribute('data-oi'));
+        if (answered[qi]) return;
+        answered[qi] = true;
+        var isCorrect = oi === questions[qi].answer;
+        var fb = document.getElementById('l2fb' + qi);
+        fb.style.display = 'block';
+        if (isCorrect) {
+          fb.className = 'verify-feedback correct';
+          fb.innerHTML = '\u2705 答对了！';
+          btn.classList.add('correct');
+          correctCount++;
+        } else {
+          fb.className = 'verify-feedback wrong';
+          fb.innerHTML = '\u274C 不对哦，正确答案是 ' + (String.fromCharCode(65 + questions[qi].answer)) + '。' + (questions[qi].explanation || '再想想～');
+          btn.classList.add('wrong');
+        }
+        // 标记该题所有选项
+        var qBtns = overlay.querySelectorAll('.verify-option[data-q="' + qi + '"]');
+        for (var xb = 0; xb < qBtns.length; xb++) {
+          qBtns[xb].disabled = true;
+          var xoi = parseInt(qBtns[xb].getAttribute('data-oi'));
+          if (xoi === questions[qi].answer) qBtns[xb].classList.add('correct');
+        }
+        // 检查是否全部答完
+        var allDone = true;
+        for (var cqi = 0; cqi < questions.length; cqi++) { if (!answered[cqi]) { allDone = false; break; } }
+        if (allDone) {
+          var resultDiv = document.getElementById('l2Result');
+          resultDiv.style.display = 'block';
+          if (correctCount === questions.length) {
+            resultDiv.innerHTML = '<div class="verify-feedback correct">\uD83C\uDF89 全部答对！太棒了！</div><button class="verify-btn primary" id="l2UnlockBtn">\u25B6\uFE0F 继续第4章</button>';
+            document.getElementById('l2UnlockBtn').onclick = function() {
+              var ov = document.querySelector('.verify-overlay');
+              if (ov) { ov.classList.remove('active'); ov.parentNode.removeChild(ov); }
+              _vL2Done = true;
+              _saveVerifyState();
+            };
+          } else {
+            resultDiv.innerHTML = '<div class="verify-feedback wrong">\uD83D\uDC4A 答对了 ' + correctCount + '/' + questions.length + '，再想想吧！</div><button class="verify-btn secondary" id="l2RetryBtn">\uD83D\uDD04 重试</button>';
+            document.getElementById('l2RetryBtn').onclick = function() { _showL2Modal(); };
+          }
+        }
+      };
+    })(optionBtns[bi]);
+  }
+}
+
+// L3 Modal
+function _showL3Modal() {
+  var verifyData = CHAPTER_DATA._verification;
+  if (!verifyData || !verifyData.L3) return;
+  var l3 = verifyData.L3;
+  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83C\uDF1F 场景迁移</h3>';
+  html += '<p><strong>' + l3.scenario + '</strong></p>';
+  html += '<p>' + l3.question + '</p>';
+  for (var oi = 0; oi < l3.options.length; oi++) {
+    html += '<button class="verify-option" data-oi="' + oi + '">' + (String.fromCharCode(65 + oi)) + '. ' + l3.options[oi] + '</button>';
+  }
+  html += '<div id="l3Feedback" class="verify-feedback" style="display:none;"></div>';
+  html += '<div id="l3Badge" style="display:none;" class="badge">\uD83C\uDFC6</div>';
+  html += '<button class="verify-btn secondary" id="l3RetryBtn" style="display:none;">\uD83D\uDD04 再想想</button></div></div>';
+  var overlay = document.getElementById('verifyContainer');
+  overlay.innerHTML = html;
+
+  var answered = false;
+  var optionBtns = overlay.querySelectorAll('.verify-option');
+  for (var bi = 0; bi < optionBtns.length; bi++) {
+    (function(btn) {
+      btn.onclick = function() {
+        if (answered) return;
+        answered = true;
+        var oi = parseInt(btn.getAttribute('data-oi'));
+        var isCorrect = oi === l3.answer;
+        var fb = document.getElementById('l3Feedback');
+        fb.style.display = 'block';
+        // 禁用所有
+        var allBtns = overlay.querySelectorAll('.verify-option');
+        for (var ab = 0; ab < allBtns.length; ab++) {
+          allBtns[ab].disabled = true;
+          var aoi = parseInt(allBtns[ab].getAttribute('data-oi'));
+          if (aoi === l3.answer) allBtns[ab].classList.add('correct');
+        }
+        if (isCorrect) {
+          btn.classList.add('correct');
+          fb.className = 'verify-feedback correct';
+          fb.innerHTML = '\u2705 完全正确！' + (l3.explanation || '');
+          document.getElementById('l3Badge').style.display = 'block';
+          var badgeHtml = '<div style="text-align:center;margin-top:8px;"><div class="badge">\uD83C\uDFC6</div><p style="font-size:14px;color:#2d3047;"><strong>\uD83C\uDF89 恭喜完成课程！</strong><br>你已获得课程完成徽章！</p></div>';
+          fb.innerHTML += badgeHtml;
+          // 关闭按钮
+          fb.innerHTML += '<br><button class="verify-btn primary" id="l3FinishBtn">\u2714\uFE0F 完成</button>';
+          document.getElementById('l3FinishBtn').onclick = function() {
+            var ov = document.querySelector('.verify-overlay');
+            if (ov) { ov.classList.remove('active'); ov.parentNode.removeChild(ov); }
+            _vL3Done = true;
+            _saveVerifyState();
+          };
+        } else {
+          btn.classList.add('wrong');
+          fb.className = 'verify-feedback wrong';
+          fb.innerHTML = '\u274C 不对哦。' + (l3.explanation || '再想想～');
+          // 显示重试按钮
+          document.getElementById('l3RetryBtn').style.display = 'inline-block';
+          document.getElementById('l3RetryBtn').onclick = function() {
+            for (var cb = 0; cb < allBtns.length; cb++) {
+              allBtns[cb].disabled = false;
+              allBtns[cb].classList.remove('correct', 'wrong');
+            }
+            fb.style.display = 'none';
+            document.getElementById('l3RetryBtn').style.display = 'none';
+            answered = false;
+          };
+        }
+      };
+    })(optionBtns[bi]);
   }
 }
 
@@ -445,10 +740,13 @@ def render_html(course_data: dict) -> str:
     total_cards = course_data.get("_total_cards", 0)
     chapters = course_data.get("chapters", [])
 
+    # 提取验证数据
+    verification_json = json.dumps(course_data.get("_verification", {}), ensure_ascii=False)
+
     # 构建各部分 HTML
     chapter_tabs_html = _build_chapter_tabs(chapters)
     cards_html = _build_cards_html(chapters)
-    chapter_data_js = _build_chapter_data_js(chapters)
+    chapter_data_js = _build_chapter_data_js(chapters, verification_json)
 
     # 获取同步器 JS
     sync_js = generate_sync_js(course_id, storage_key, chapter_totals, total_cards)
@@ -482,6 +780,9 @@ def render_html(course_data: dict) -> str:
 <div class="card-area" id="card-area">
 {cards_html}
 </div>
+
+<!-- 3层验证 Modal 容器 -->
+<div id="verifyContainer"></div>
 
 <div class="bottom-bar">
   <button class="nav-btn" id="btn-prev">&larr; 上一张</button>
@@ -556,11 +857,12 @@ def _build_cards_html(chapters: list) -> str:
     return "\n".join(sections)
 
 
-def _build_chapter_data_js(chapters: list) -> str:
+def _build_chapter_data_js(chapters: list, verification_json: str = "{}") -> str:
     """构建 JavaScript 的 CHAPTER_DATA 对象"""
     entries = []
     for ch in chapters:
         ch_id = ch.get("id", 1)
         total = len(ch.get("cards", []))
         entries.append(f"  {ch_id}: {{total: {total}}}")
+    entries.append(f'  "_verification": {verification_json}')
     return "{\n" + ",\n".join(entries) + "\n}"
