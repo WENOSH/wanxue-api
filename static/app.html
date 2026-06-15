@@ -1406,6 +1406,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
           <input type="text" id="regCode" placeholder="6 位验证码" maxlength="6" inputmode="numeric">
           <button class="code-btn" id="regCodeBtn">获取验证码</button>
         </div>
+        <div style="font-size:12px;color:var(--text-light);margin-top:4px;">测试用验证码: 888888</div>
       </div>
       <div class="auth-field">
         <label>密码</label>
@@ -2819,10 +2820,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // ===== Auth Event Listeners =====
   authBtn.addEventListener('click', function() { openAuthModal('login'); });
   userAvatarBtn.addEventListener('click', openProfile);
-  authCloseBtn.addEventListener('click', closeAuthModal);
-  authOverlay.addEventListener('click', function(e) {
-    if (e.target === authOverlay) closeAuthModal();
-  });
+  // 注意：登录模态框不可通过点击外部关闭，必须登录后才能使用
 
   // Tab 切换
   authTabs.forEach(function(tab) {
