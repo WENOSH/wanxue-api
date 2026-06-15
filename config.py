@@ -31,6 +31,10 @@ HOST = os.getenv("WANXUE_HOST", "0.0.0.0")
 PORT = int(os.getenv("WANXUE_PORT", os.getenv("PORT", "8000")))
 LOG_LEVEL = os.getenv("WANXUE_LOG_LEVEL", "info")
 
+# ── Database ─────────────────────────────────────
+# Render 自动注入 DATABASE_URL 到 Postgres 服务
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
 # ── Course Limits ────────────────────────────────
 MAX_CHAPTERS = int(os.getenv("WANXUE_MAX_CHAPTERS", "5"))
 MAX_CARDS_PER_CHAPTER = int(os.getenv("WANXUE_MAX_CARDS_PER_CHAPTER", "8"))

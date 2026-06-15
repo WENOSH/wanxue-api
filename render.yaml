@@ -15,3 +15,9 @@ services:
         value: deepseek-chat
       - key: WANXUE_LLM_PROVIDER
         value: deepseek
+
+databases:
+  - name: wanxue-db
+    databaseName: wanxue
+    plan: free
+    postgresMajorVersion: 16
