@@ -28,7 +28,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 # ── Server ───────────────────────────────────────
 HOST = os.getenv("WANXUE_HOST", "0.0.0.0")
-PORT = int(os.getenv("WANXUE_PORT", "8000"))
+PORT = int(os.getenv("WANXUE_PORT", os.getenv("PORT", "8000")))
 LOG_LEVEL = os.getenv("WANXUE_LOG_LEVEL", "info")
 
 # ── Course Limits ────────────────────────────────
