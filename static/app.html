@@ -2545,6 +2545,9 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
         updateAuthUI();
         closeAuthModal();
         showToast('登录成功！' + (r.nickname ? '欢迎回来，' + r.nickname : ''), 'success');
+        // 加载首页欢迎内容
+        showWelcome();
+        createSession().catch(function(e) { console.warn('[chat] 创建会话失败', e); });
         // 清除表单
         loginPhone.value = '';
         loginPassword.value = '';
