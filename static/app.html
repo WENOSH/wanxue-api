@@ -841,13 +841,14 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 .auth-landing {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
+  height: 100dvh; height: -webkit-fill-available;
   z-index: 500;
   background: linear-gradient(135deg, #fff8e7 0%, #ffe9b3 50%, #ffd9a0 100%);
   display: none;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
+  justify-content: flex-start;
+  padding: 5vh max(20px, env(safe-area-inset-left)) 6vh max(20px, env(safe-area-inset-right));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -881,18 +882,21 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   padding: 28px 24px 24px;
   box-shadow: 0 8px 32px rgba(45, 48, 71, 0.1);
   flex-shrink: 0;
+  margin-top: auto;
+  margin-bottom: auto;
 }
 @media (max-height: 700px) {
+  .auth-landing { padding-top: 4vh; padding-bottom: 4vh; }
   .auth-landing .brand-icon { font-size: 36px; }
   .auth-landing .brand-name { font-size: 22px; }
-  .auth-landing .brand { margin-bottom: 12px; }
+  .auth-landing .brand { margin-bottom: 10px; }
   .auth-landing .brand-desc { font-size: 12px; }
-  .auth-landing .auth-card { padding: 16px 18px 14px; }
-  .auth-landing .auth-tabs { margin-bottom: 12px; }
-  .auth-landing .auth-field { margin-bottom: 10px; }
-  .auth-landing .submit-btn { padding: 12px; font-size: 14px; }
-  .social-btn { padding: 8px 4px 6px; }
-  .social-btn .social-icon { font-size: 18px; }
+  .auth-landing .auth-card { padding: 14px 16px 12px; }
+  .auth-landing .auth-tabs { margin-bottom: 10px; }
+  .auth-landing .auth-field { margin-bottom: 8px; }
+  .auth-landing .submit-btn { padding: 10px; font-size: 14px; }
+  .social-btn { padding: 6px 4px 4px; }
+  .social-btn .social-icon { font-size: 16px; }
 }
 .auth-landing .close-btn {
   position: absolute;
