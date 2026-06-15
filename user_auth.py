@@ -4,7 +4,7 @@
 当环境变量 DATABASE_URL 存在时自动使用 PostgreSQL。
 """
 
-import hashlib, secrets, json, logging, time, random
+import hashlib, secrets, json, logging, time, random, sqlite3
 from pathlib import Path
 
 log = logging.getLogger("wanxue.auth")
@@ -31,7 +31,6 @@ def _get_conn():
         conn.autocommit = False
         return conn
     else:
-        import sqlite3
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
