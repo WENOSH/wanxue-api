@@ -1262,7 +1262,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   #app { display: none !important; }
   .auth-landing { display: flex !important; }
   /* 已登录用户：通过 JS 添加 .logged-in 到 body 来反转 */
-  body.logged-in #app { display: block !important; }
+  body.logged-in #app { display: flex !important; }
   body.logged-in .auth-landing { display: none !important; }
 </style>
 <div class="auth-landing" id="authOverlay">
