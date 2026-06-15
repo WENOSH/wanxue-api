@@ -1194,6 +1194,34 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 }
 .profile-logout-btn:active { background: var(--bg); }
 
+/* ===== My Courses 样式 ===== */
+.courses-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.courses-item:last-child { border-bottom: none; }
+.courses-item .ci-emoji { font-size: 22px; flex-shrink: 0; }
+.courses-item .ci-info { flex: 1; min-width: 0; }
+.courses-item .ci-title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.courses-item .ci-meta { font-size: 11px; color: var(--text-light); margin-top: 2px; }
+.courses-item .ci-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.courses-item .ci-btn {
+  padding: 4px 10px; border: none; border-radius: 6px;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  font-family: var(--font);
+}
+.courses-item .ci-btn.open { background: var(--secondary); color: #fff; }
+.courses-item .ci-btn.delete { background: #fff0f0; color: var(--primary); }
+.my-courses-btn {
+  width: 36px; height: 36px; border: none; border-radius: 50%;
+  background: var(--card); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font); flex-shrink: 0;
+  box-shadow: var(--shadow);
+  transition: all 0.15s;
+}
+.my-courses-btn:active { transform: scale(0.9); background: var(--bg); }
+
 /* ===== Learning Advice ===== */
 .advice-box {
   background: linear-gradient(135deg, #fff8e7, #ffe66d22);
@@ -1323,6 +1351,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
     <button class="tts-toggle" id="ttsToggleBtn" title="朗读模式：AI 消息自动朗读">🔇</button>
     <button class="new-chat-btn" id="newChatBtn" title="新会话">+</button>
+    <button class="my-courses-btn" id="myCoursesBtn" title="我的课程">📋</button>
     <button class="auth-btn" id="authBtn" style="display:none">登录</button>
     <button class="user-avatar-btn" id="userAvatarBtn" style="display:none">👤</button>
   </header>
@@ -1442,6 +1471,12 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
 
     <!-- Learning Records -->
+    <div class="profile-card">
+      <div class="record-list-title">📋 我的课程</div>
+      <div id="myCoursesList">
+        <div class="record-empty" id="myCoursesEmpty">暂无课程</div>
+      </div>
+    </div>
     <div class="profile-card">
       <div class="record-list-title">📚 学习记录</div>
       <div id="recordsList">
@@ -1986,6 +2021,8 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
+                // 自动保存到我的课程
+                saveCurrentCourseToProfile(data.course);
                 // 课程已生成但尚未学习，done=0（不标记为已完成）
                 setTimeout(function() {
                   syncLearningRecord({
@@ -2676,6 +2713,8 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     } catch(e) {
       console.warn('[auth] 加载学习摘要失败', e);
     }
+    // 加载我的课程
+    loadMyCourses();
 
     // 加载学习记录
     try {
@@ -2714,6 +2753,76 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       document.getElementById('adviceLoading').style.display = 'none';
       document.getElementById('adviceText').style.display = '';
       document.getElementById('adviceText').textContent = '继续加油！每天进步一点点。';
+    }
+  }
+
+  // ===== 我的课程 =====
+
+  async function loadMyCourses() {
+    var list = document.getElementById('myCoursesList');
+    if (!list) return;
+    try {
+      var r = await apiJsonAuth('/api/auth/courses');
+      if (r.success && r.courses && r.courses.length > 0) {
+        list.innerHTML = r.courses.map(function(c) {
+          var title = c.course_title || '课程';
+          var emoji = c.course_emoji || '📖';
+          var meta = c.total_chapters + '章 ' + c.total_cards + '卡';
+          if (c.difficulty) meta += ' · ' + c.difficulty;
+          return '<div class="courses-item">' +
+            '<span class="ci-emoji">' + emoji + '</span>' +
+            '<div class="ci-info">' +
+              '<div class="ci-title">' + escapeHtml(title) + '</div>' +
+              '<div class="ci-meta">' + meta + '</div>' +
+            '</div>' +
+            '<div class="ci-actions">' +
+              '<button class="ci-btn open" data-cid="' + c.course_id + '">打开</button>' +
+              '<button class="ci-btn delete" data-cid="' + c.course_id + '">删除</button>' +
+            '</div></div>';
+        }).join('');
+        // 绑定事件
+        list.querySelectorAll('.ci-btn.open').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            closeProfile();
+            // 从 API 获取课程数据
+            var cid = this.dataset.cid;
+            window.open('/api/courses/' + encodeURIComponent(cid) + '/index.html', '_blank');
+          });
+        });
+        list.querySelectorAll('.ci-btn.delete').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (!confirm('确定删除这个课程吗？')) return;
+            var cid = this.dataset.cid;
+            var self = this;
+            apiJsonAuth('/api/auth/courses/' + encodeURIComponent(cid), {method: 'DELETE'}).then(function(r) {
+              if (r.success) {
+                showToast('已删除', 'info');
+                loadMyCourses();
+              } else {
+                showToast('删除失败', 'error');
+              }
+            });
+          });
+        });
+      } else {
+        list.innerHTML = '<div class="record-empty">暂无课程</div>';
+      }
+    } catch(e) {
+      list.innerHTML = '<div class="record-empty">加载失败</div>';
+    }
+  }
+
+  async function saveCurrentCourseToProfile(course) {
+    if (!state.token || !state.user || !course) return;
+    try {
+      var diff = localStorage.getItem('wanxue_difficulty') || '';
+      await apiJsonAuth('/api/auth/courses/save', {
+        method: 'POST',
+        body: JSON.stringify({course: course, difficulty: diff})
+      });
+    } catch(e) {
+      // 静默失败，不影响主流程
     }
   }
 
@@ -2797,6 +2906,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // ===== Auth Event Listeners =====
   authBtn.addEventListener('click', function() { openAuthModal('login'); });
   userAvatarBtn.addEventListener('click', openProfile);
+  var myCoursesBtn = $('#myCoursesBtn');
+  if (myCoursesBtn) {
+    myCoursesBtn.addEventListener('click', function() {
+      if (!requireLogin()) return;
+      openProfile();
+      // 确保我的课程 tab 可见
+      setTimeout(function() { loadMyCourses(); }, 100);
+    });
+  }
   // 注意：登录模态框不可通过点击外部关闭，必须登录后才能使用
 
   // Tab 切换
