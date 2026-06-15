@@ -1986,10 +1986,10 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
-                // 课程完成时自动同步学习记录
+                // 课程已生成但尚未学习，done=0（不标记为已完成）
                 setTimeout(function() {
                   syncLearningRecord({
-                    cards: { done: data.course._total_cards || 0, total: data.course._total_cards || 0 }
+                    cards: { done: 0, total: data.course._total_cards || 0 }
                   });
                 }, 100);
               }
@@ -2446,9 +2446,25 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   }
 
   // 初始化登录状态
-  function initAuth() {
+  async function initAuth() {
     loadAuthState();
     if (state.token && state.user) {
+      // 验证 token 是否有效（服务端数据库可能已重置）
+      try {
+        const r = await apiJsonAuth('/api/auth/profile');
+        if (!r.success) throw new Error(r.error || 'token 无效');
+        // token 有效，继续
+      } catch(e) {
+        console.warn('[auth] token 验证失败，清除登录状态', e.message);
+        state.token = null;
+        state.user = null;
+        localStorage.removeItem('wanxue_token');
+        localStorage.removeItem('wanxue_user');
+        document.body.classList.remove('logged-in');
+        openAuthModal('login');
+        updateAuthUI();
+        return;
+      }
       document.body.classList.add('logged-in');
       showWelcome();
       createSession();
