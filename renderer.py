@@ -396,7 +396,7 @@ function updateUI() {
   // 进度文字
   var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
   document.getElementById('prog-text').textContent = '共 ' + total + ' 张卡片';
-  // 顶部进��条 — 使用章节进度（长卡片模式显示为章节占比）
+  // 顶部进度条 — 使用章节进度（长卡片模式显示为章节占比）
   var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
   var maxCh = Math.max.apply(null, chapterIds);
   var overall = (currentCh / maxCh) * 100;
@@ -817,6 +817,8 @@ document.addEventListener('DOMContentLoaded', function() {
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].onclick = function() { switchChapter(parseInt(this.dataset.ch)); };
   }
+  // 首次渲染（在覆盖之后，确保按钮文字正确）
+  updateUI();
 });
 
 // 键盘翻页
@@ -825,7 +827,6 @@ document.addEventListener('keydown', function(e) {
   else if (e.key === 'ArrowRight') { e.preventDefault(); goto(1); }
 });
 
-// 触摸滑动
 // ===== 字体大小控制 =====
 (function() {
   var FS_SIZES = ['sm', 'md', 'lg', 'xl'];
@@ -891,7 +892,6 @@ document.addEventListener('keydown', function(e) {
 
 // 启动
 loadProgress();
-updateUI();
 
 // 为所有 quiz 添加跳过按钮
 (function() {
@@ -904,7 +904,7 @@ updateUI();
     skip.innerHTML = '<button class="skip-quiz-btn" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 ↓</button>';
     boxes[i].appendChild(skip);
     skip.querySelector('.skip-quiz-btn').onclick = function() {
-      // 在长卡片模式下，滚动到当前卡片下���
+      // 在长卡片模式下，滚动到当前卡片下面
       var card = this.closest('.card');
       if (card) {
         var next = card.nextElementSibling;
