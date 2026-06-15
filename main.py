@@ -22,7 +22,7 @@ if _PKG_NAME not in sys.modules:
     _spec.loader.exec_module(_pkg)
 
 # ── 标准库 / 第三方 ──────────────────────────────
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
