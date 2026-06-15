@@ -22,7 +22,7 @@ if _PKG_NAME not in sys.modules:
     _spec.loader.exec_module(_pkg)
 
 # ── 标准库 / 第三方 ──────────────────────────────
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -80,6 +80,12 @@ class GenerateRequest(BaseModel):
     age: str = "成人"
     goal: str = "入门科普"
     difficulty: str = "3-标准"  # 1-入门 / 2-基础 / 3-标准 / 4-进阶 / 5-挑战
+    # TODO(2026-06-16): 考虑新增 mode 字段，支持速览/精学/复习/对比四种学习模式
+    #   - 速览: 只出知识地图+核心概念（step 1-3 子集）
+    #   - 精学(默认): 完整 7 步课程
+    #   - 复习: 基于已有 mastery-log 出闪卡+Quiz
+    #   - 对比: 双主题知识地图 + 对比探索
+    #  详见 wanxue skill SKILL.md 2.1 节
 
 
 class ChatRequest(BaseModel):
@@ -524,7 +530,7 @@ async def chat_bind_course(req: BindCourseRequest):
     if not s:
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
     s.current_course = req.course
-    s.add_msg("system", f"已加载课程《{req.course.get('course_title', '?')}》共 {req.course.get('_total_cards', 0)} 卡片", role="system")
+    s.add_msg("system", f"已加载课程《{req.course.get('course_title', '?')}》共 {req.course.get('_total_cards', 0)} 卡片")
     return {"ok": True, "course_title": s.current_course.get("course_title", "")}
 
 
@@ -920,6 +926,48 @@ async def get_learning_advice(authorization: str = Header(None)):
         advice = "继续加油！每天学习一点点，知识就会慢慢积累起来。试着回顾一下学过的内容，巩固记忆效果更好哦。"
 
     return {"success": True, "advice": advice}
+
+
+# ===== 我的课程 API =====
+
+@app.post("/api/auth/courses/save")
+async def save_course(request: Request, authorization: str = Header(None)):
+    """保存课程到我的课程"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    body = await request.json()
+    course = body.get("course", {})
+    diff = body.get("difficulty", "")
+    result = save_user_course(
+        user_id=user["user_id"],
+        course_id=course.get("_course_id", course.get("course_id", "")),
+        course_title=course.get("course_title", "课程"),
+        course_emoji=course.get("course_emoji", "📖"),
+        total_chapters=len(course.get("chapters", [])),
+        total_cards=course.get("_total_cards", 0),
+        difficulty=diff,
+    )
+    return result
+
+
+@app.get("/api/auth/courses")
+async def list_courses(authorization: str = Header(None)):
+    """获取我的课程列表"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期", "courses": []}
+    courses = list_user_courses(user["user_id"])
+    return {"success": True, "courses": courses}
+
+
+@app.delete("/api/auth/courses/{course_id}")
+async def delete_course(course_id: str, authorization: str = Header(None)):
+    """删除我的课程"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    return delete_user_course(user["user_id"], course_id)
 
 
 @app.get("/", response_class=HTMLResponse)
