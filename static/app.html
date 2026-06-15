@@ -24,9 +24,6 @@
 <link rel="apple-touch-startup-image" href="/static/icons/icon-512.png">
 
 <title>WanXue 万学 - 对话式学习</title>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <style>
 /* ===== CSS Variables ===== */
 :root {
@@ -1019,6 +1016,36 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 }
 .auth-landing .auth-error.show { display: block; }
 
+/* ===== Social Login ===== */
+.social-login { margin-top: 16px; }
+.social-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px; font-size: 12px; color: var(--text-light);
+}
+.social-divider::before, .social-divider::after {
+  content: ''; flex: 1; height: 0; border-top: 1px solid var(--border);
+}
+.social-btns { display: flex; gap: 8px; }
+.social-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 12px 8px 8px; border: 1.5px solid var(--border);
+  border-radius: 12px; background: var(--card); cursor: pointer;
+  font-family: var(--font); font-size: 12px; color: var(--text);
+  transition: all 0.15s; position: relative;
+}
+.social-btn:active:not(:disabled) { transform: scale(0.96); }
+.social-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.social-btn .social-icon { font-size: 22px; }
+.social-btn .social-badge {
+  font-size: 9px; padding: 1px 5px; border-radius: 8px;
+  background: var(--border); color: var(--text-light);
+  white-space: nowrap;
+}
+.social-btn.wechat .social-badge { background: #e8f5e9; color: #2e7d32; }
+.social-btn.qq .social-badge { background: #e3f2fd; color: #1565c0; }
+.social-btn.phone .social-badge { background: #fff3e0; color: #e65100; }
+.social-btn.phone { border-color: #ffb74d; background: #fff8e1; }
+
 /* ===== Profile Overlay ===== */
 .profile-overlay {
   position: fixed;
@@ -1197,6 +1224,34 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 }
 .profile-logout-btn:active { background: var(--bg); }
 
+/* ===== My Courses 样式 ===== */
+.courses-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.courses-item:last-child { border-bottom: none; }
+.courses-item .ci-emoji { font-size: 22px; flex-shrink: 0; }
+.courses-item .ci-info { flex: 1; min-width: 0; }
+.courses-item .ci-title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.courses-item .ci-meta { font-size: 11px; color: var(--text-light); margin-top: 2px; }
+.courses-item .ci-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.courses-item .ci-btn {
+  padding: 4px 10px; border: none; border-radius: 6px;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  font-family: var(--font);
+}
+.courses-item .ci-btn.open { background: var(--secondary); color: #fff; }
+.courses-item .ci-btn.delete { background: #fff0f0; color: var(--primary); }
+.my-courses-btn {
+  width: 36px; height: 36px; border: none; border-radius: 50%;
+  background: var(--card); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font); flex-shrink: 0;
+  box-shadow: var(--shadow);
+  transition: all 0.15s;
+}
+.my-courses-btn:active { transform: scale(0.9); background: var(--bg); }
+
 /* ===== Learning Advice ===== */
 .advice-box {
   background: linear-gradient(135deg, #fff8e7, #ffe66d22);
@@ -1269,6 +1324,24 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       <div class="auth-forgot">
         <button id="forgotPwdBtn">忘记密码？</button>
       </div>
+      <!-- Social Login -->
+      <div class="social-login">
+        <div class="social-divider"><span>其他登录方式</span></div>
+        <div class="social-btns">
+          <button class="social-btn wechat" id="wechatLoginBtn" disabled>
+            <span class="social-icon">💬</span><span>微信</span>
+            <span class="social-badge">即将支持</span>
+          </button>
+          <button class="social-btn qq" id="qqLoginBtn" disabled>
+            <span class="social-icon">🐧</span><span>QQ</span>
+            <span class="social-badge">即将支持</span>
+          </button>
+          <button class="social-btn phone" id="oneClickLoginBtn">
+            <span class="social-icon">📱</span><span>本机号码</span>
+            <span class="social-badge">一键登录</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Register Form -->
@@ -1311,7 +1384,10 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       </div>
       <button class="submit-btn" id="resetSubmitBtn">重置密码</button>
       <div class="auth-forgot">
-        <button id="backToLoginBtn">返回登录</button>
+        <button id="backToLoginBtn">← 返回登录</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-light);text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+        💡 重置成功后自动跳转登录页，用新密码登录即可
       </div>
     </div>
   </div>
@@ -1326,6 +1402,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
     <button class="tts-toggle" id="ttsToggleBtn" title="朗读模式：AI 消息自动朗读">🔇</button>
     <button class="new-chat-btn" id="newChatBtn" title="新会话">+</button>
+    <button class="my-courses-btn" id="myCoursesBtn" title="我的课程">📋</button>
     <button class="auth-btn" id="authBtn" style="display:none">登录</button>
     <button class="user-avatar-btn" id="userAvatarBtn" style="display:none">👤</button>
   </header>
@@ -1445,6 +1522,12 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
 
     <!-- Learning Records -->
+    <div class="profile-card">
+      <div class="record-list-title">📋 我的课程</div>
+      <div id="myCoursesList">
+        <div class="record-empty" id="myCoursesEmpty">暂无课程</div>
+      </div>
+    </div>
     <div class="profile-card">
       <div class="record-list-title">📚 学习记录</div>
       <div id="recordsList">
@@ -1989,7 +2072,9 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
-                // 课程完成时自动同步学习记录
+                // 自动保存到我的课程
+                saveCurrentCourseToProfile(data.course);
+                // 课程已生成但尚未学习，done=0（不标记为已完成）
                 setTimeout(function() {
                   syncLearningRecord({
                     cards: { done: 0, total: data.course._total_cards || 0 }
@@ -1997,6 +2082,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
                 }, 100);
               }
               setStatus('已生成');
+              scrollToBottom();
             } else if (lastEvent === 'card_done') {
               firstRealEvent = true;
               thinkingBubble.classList.remove('thinking');
@@ -2449,9 +2535,25 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   }
 
   // 初始化登录状态
-  function initAuth() {
+  async function initAuth() {
     loadAuthState();
     if (state.token && state.user) {
+      // 验证 token 是否有效（服务端数据库可能已重置）
+      try {
+        const r = await apiJsonAuth('/api/auth/profile');
+        if (!r.success) throw new Error(r.error || 'token 无效');
+        // token 有效，继续
+      } catch(e) {
+        console.warn('[auth] token 验证失败，清除登录状态', e.message);
+        state.token = null;
+        state.user = null;
+        localStorage.removeItem('wanxue_token');
+        localStorage.removeItem('wanxue_user');
+        document.body.classList.remove('logged-in');
+        openAuthModal('login');
+        updateAuthUI();
+        return;
+      }
       document.body.classList.add('logged-in');
       showWelcome();
       createSession();
@@ -2581,13 +2683,31 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
         body: JSON.stringify({ phone: phone, password: password, sms_code: code })
       });
       if (r.success) {
-        showToast('注册成功！请登录', 'success');
-        // 清空注册表单并切到登录
-        regPhone.value = '';
-        regCode.value = '';
-        regPassword.value = '';
-        loginPhone.value = phone;
-        switchTab('login');
+        // 注册成功，自动登录
+        try {
+          var loginR = await apiJsonAuth('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ phone: phone, password: password })
+          });
+          if (loginR.success) {
+            state.token = loginR.token;
+            state.user = { token: loginR.token, user_id: loginR.user_id, nickname: loginR.nickname, phone: loginR.phone };
+            saveAuthState();
+            updateAuthUI();
+            closeAuthModal();
+            showToast('注册成功！欢迎使用万学', 'success');
+            showWelcome();
+            createSession().catch(function(e) { console.warn('[chat] 创建会话失败', e); });
+          } else {
+            showToast('注册成功，请登录', 'success');
+            loginPhone.value = phone;
+            switchTab('login');
+          }
+        } catch(e) {
+          showToast('注册成功，请登录', 'success');
+          loginPhone.value = phone;
+          switchTab('login');
+        }
       } else {
         showAuthError(r.error || '注册失败');
       }
@@ -2663,6 +2783,8 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     } catch(e) {
       console.warn('[auth] 加载学习摘要失败', e);
     }
+    // 加载我的课程
+    loadMyCourses();
 
     // 加载学习记录
     try {
@@ -2701,6 +2823,76 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       document.getElementById('adviceLoading').style.display = 'none';
       document.getElementById('adviceText').style.display = '';
       document.getElementById('adviceText').textContent = '继续加油！每天进步一点点。';
+    }
+  }
+
+  // ===== 我的课程 =====
+
+  async function loadMyCourses() {
+    var list = document.getElementById('myCoursesList');
+    if (!list) return;
+    try {
+      var r = await apiJsonAuth('/api/auth/courses');
+      if (r.success && r.courses && r.courses.length > 0) {
+        list.innerHTML = r.courses.map(function(c) {
+          var title = c.course_title || '课程';
+          var emoji = c.course_emoji || '📖';
+          var meta = c.total_chapters + '章 ' + c.total_cards + '卡';
+          if (c.difficulty) meta += ' · ' + c.difficulty;
+          return '<div class="courses-item">' +
+            '<span class="ci-emoji">' + emoji + '</span>' +
+            '<div class="ci-info">' +
+              '<div class="ci-title">' + escapeHtml(title) + '</div>' +
+              '<div class="ci-meta">' + meta + '</div>' +
+            '</div>' +
+            '<div class="ci-actions">' +
+              '<button class="ci-btn open" data-cid="' + c.course_id + '">打开</button>' +
+              '<button class="ci-btn delete" data-cid="' + c.course_id + '">删除</button>' +
+            '</div></div>';
+        }).join('');
+        // 绑定事件
+        list.querySelectorAll('.ci-btn.open').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            closeProfile();
+            // 从 API 获取课程数据
+            var cid = this.dataset.cid;
+            window.open('/api/courses/' + encodeURIComponent(cid) + '/index.html', '_blank');
+          });
+        });
+        list.querySelectorAll('.ci-btn.delete').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (!confirm('确定删除这个课程吗？')) return;
+            var cid = this.dataset.cid;
+            var self = this;
+            apiJsonAuth('/api/auth/courses/' + encodeURIComponent(cid), {method: 'DELETE'}).then(function(r) {
+              if (r.success) {
+                showToast('已删除', 'info');
+                loadMyCourses();
+              } else {
+                showToast('删除失败', 'error');
+              }
+            });
+          });
+        });
+      } else {
+        list.innerHTML = '<div class="record-empty">暂无课程</div>';
+      }
+    } catch(e) {
+      list.innerHTML = '<div class="record-empty">加载失败</div>';
+    }
+  }
+
+  async function saveCurrentCourseToProfile(course) {
+    if (!state.token || !state.user || !course) return;
+    try {
+      var diff = localStorage.getItem('wanxue_difficulty') || '';
+      await apiJsonAuth('/api/auth/courses/save', {
+        method: 'POST',
+        body: JSON.stringify({course: course, difficulty: diff})
+      });
+    } catch(e) {
+      // 静默失败，不影响主流程
     }
   }
 
@@ -2784,6 +2976,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // ===== Auth Event Listeners =====
   authBtn.addEventListener('click', function() { openAuthModal('login'); });
   userAvatarBtn.addEventListener('click', openProfile);
+  var myCoursesBtn = $('#myCoursesBtn');
+  if (myCoursesBtn) {
+    myCoursesBtn.addEventListener('click', function() {
+      if (!requireLogin()) return;
+      openProfile();
+      // 确保我的课程 tab 可见
+      setTimeout(function() { loadMyCourses(); }, 100);
+    });
+  }
   // 注意：登录模态框不可通过点击外部关闭，必须登录后才能使用
 
   // Tab 切换
@@ -2808,6 +3009,16 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   resetCodeBtn.addEventListener('click', function() { handleSendCode(resetPhone, resetCodeBtn); });
   forgotPwdBtn.addEventListener('click', function() { switchTab('reset'); });
   backToLoginBtn.addEventListener('click', function() { switchTab('login'); });
+  
+  // 一键登录（本机号码模拟）
+  var oneClickLoginBtn = $('#oneClickLoginBtn');
+  if (oneClickLoginBtn) {
+    oneClickLoginBtn.addEventListener('click', function() {
+      loginPhone.value = '13800138000';
+      loginPassword.value = '123456';
+      handleLogin();
+    });
+  }
 
   // 个人中心
   profileBack.addEventListener('click', closeProfile);
