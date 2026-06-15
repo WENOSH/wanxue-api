@@ -7,7 +7,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: OPENAI_API_KEY
+      - key: WANXUE_API_KEY
         sync: false
-      - key: OPENAI_BASE_URL
+      - key: WANXUE_LLM_BASE_URL
         sync: false
+      - key: WANXUE_LLM_MODEL
+        value: deepseek-chat
+      - key: WANXUE_LLM_PROVIDER
+        value: deepseek
