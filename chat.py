@@ -138,7 +138,7 @@ def detect_intent(text: str) -> str:
     text = text.lower().strip()
     
     # ★ 优先匹配：如果包含"简单了" 或 "太简单" → 是"太容易"的意思，要更难
-    if "太简单" in text or "简单了" in text:
+    if "太简单" in text or text.startswith("简单了"):
         return "deepen"
     
     for intent, kws in INTENT_KEYWORDS.items():

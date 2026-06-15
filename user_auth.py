@@ -122,18 +122,6 @@ def init_db():
                     user_id INTEGER NOT NULL REFERENCES users(id),
                     expires_at DOUBLE PRECISION NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS user_courses (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id),
-                    course_id VARCHAR(128) NOT NULL,
-                    course_title VARCHAR(256) DEFAULT '',
-                    course_emoji VARCHAR(16) DEFAULT '📖',
-                    total_chapters INTEGER DEFAULT 0,
-                    total_cards INTEGER DEFAULT 0,
-                    difficulty VARCHAR(32) DEFAULT '',
-                    created_at DOUBLE PRECISION NOT NULL,
-                    UNIQUE(user_id, course_id)
-                );
             """)
         else:
             _execute(conn, """
@@ -167,19 +155,6 @@ def init_db():
                     token TEXT PRIMARY KEY,
                     user_id INTEGER NOT NULL,
                     expires_at REAL NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                );
-                CREATE TABLE IF NOT EXISTS user_courses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    course_id TEXT NOT NULL,
-                    course_title TEXT DEFAULT '',
-                    course_emoji TEXT DEFAULT '📖',
-                    total_chapters INTEGER DEFAULT 0,
-                    total_cards INTEGER DEFAULT 0,
-                    difficulty TEXT DEFAULT '',
-                    created_at REAL NOT NULL,
-                    UNIQUE(user_id, course_id),
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 );
             """)
@@ -541,88 +516,6 @@ def get_learning_records(user_id: int) -> list:
                 d["badges"] = []
             results.append(d)
         return results
-    finally:
-        conn.close()
-
-
-# ===== 我的课程 CRUD =====
-
-def save_user_course(user_id: int, course_id: str, course_title: str = "",
-                     course_emoji: str = "📖", total_chapters: int = 0,
-                     total_cards: int = 0, difficulty: str = "") -> dict:
-    """保存用户生成的课程到数据库"""
-    conn = _get_conn()
-    try:
-        now = time.time()
-        if _USE_PG:
-            sql = """INSERT INTO user_courses (user_id, course_id, course_title, course_emoji,
-                     total_chapters, total_cards, difficulty, created_at)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                     ON CONFLICT (user_id, course_id) DO UPDATE SET
-                     course_title = EXCLUDED.course_title, created_at = EXCLUDED.created_at"""
-        else:
-            sql = """INSERT OR REPLACE INTO user_courses
-                     (user_id, course_id, course_title, course_emoji,
-                      total_chapters, total_cards, difficulty, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
-        _execute(conn, sql, (user_id, course_id, course_title, course_emoji,
-                              total_chapters, total_cards, difficulty, now))
-        conn.commit()
-        return {"success": True}
-    except Exception as e:
-        conn.rollback()
-        log.error(f"保存课程失败: {e}")
-        return {"success": False, "error": str(e)}
-    finally:
-        conn.close()
-
-
-def list_user_courses(user_id: int) -> list:
-    """获取用户的所有课程"""
-    conn = _get_conn()
-    try:
-        rows = _fetchall(conn,
-            """SELECT id, course_id, course_title, course_emoji,
-               total_chapters, total_cards, difficulty, created_at
-               FROM user_courses WHERE user_id = %s
-               ORDER BY created_at DESC""" if _USE_PG else
-            """SELECT id, course_id, course_title, course_emoji,
-               total_chapters, total_cards, difficulty, created_at
-               FROM user_courses WHERE user_id = ?
-               ORDER BY created_at DESC""",
-            (user_id,))
-        keys = ["id", "course_id", "course_title", "course_emoji",
-                "total_chapters", "total_cards", "difficulty", "created_at"]
-        return [_row_to_dict(r, keys) for r in rows]
-    finally:
-        conn.close()
-
-
-def delete_user_course(user_id: int, course_id: str) -> dict:
-    """删除用户的课程"""
-    conn = _get_conn()
-    try:
-        _execute(conn,
-            "DELETE FROM user_courses WHERE user_id = %s AND course_id = %s" if _USE_PG
-            else "DELETE FROM user_courses WHERE user_id = ? AND course_id = ?",
-            (user_id, course_id))
-        _execute(conn,
-            "DELETE FROM learning_records WHERE user_id = %s AND course_id = %s" if _USE_PG
-            else "DELETE FROM learning_records WHERE user_id = ? AND course_id = ?",
-            (user_id, course_id))
-        conn.commit()
-        # 尝试删除磁盘上的课程文件（如果确认删除）
-        # from pathlib import Path
-        # from wanxue_api.config import OUTPUT_DIR
-        # import shutil
-        # course_dir = OUTPUT_DIR / course_id
-        # if course_dir.exists():
-        #     shutil.rmtree(str(course_dir))
-        return {"success": True}
-    except Exception as e:
-        conn.rollback()
-        log.error(f"删除课程失败: {e}")
-        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
