@@ -2632,13 +2632,31 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
         body: JSON.stringify({ phone: phone, password: password, sms_code: code })
       });
       if (r.success) {
-        showToast('注册成功！请登录', 'success');
-        // 清空注册表单并切到登录
-        regPhone.value = '';
-        regCode.value = '';
-        regPassword.value = '';
-        loginPhone.value = phone;
-        switchTab('login');
+        // 注册成功，自动登录
+        try {
+          var loginR = await apiJsonAuth('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ phone: phone, password: password })
+          });
+          if (loginR.success) {
+            state.token = loginR.token;
+            state.user = { token: loginR.token, user_id: loginR.user_id, nickname: loginR.nickname, phone: loginR.phone };
+            saveAuthState();
+            updateAuthUI();
+            closeAuthModal();
+            showToast('注册成功！欢迎使用万学', 'success');
+            showWelcome();
+            createSession().catch(function(e) { console.warn('[chat] 创建会话失败', e); });
+          } else {
+            showToast('注册成功，请登录', 'success');
+            loginPhone.value = phone;
+            switchTab('login');
+          }
+        } catch(e) {
+          showToast('注册成功，请登录', 'success');
+          loginPhone.value = phone;
+          switchTab('login');
+        }
       } else {
         showAuthError(r.error || '注册失败');
       }
