@@ -4,7 +4,7 @@
 当环境变量 DATABASE_URL 存在时自动使用 PostgreSQL。
 """
 
-import hashlib, json, secrets, json, logging, time, random
+import hashlib, secrets, json, logging, time, random
 from pathlib import Path
 
 log = logging.getLogger("wanxue.auth")
