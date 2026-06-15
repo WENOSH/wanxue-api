@@ -2031,6 +2031,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
                 }, 100);
               }
               setStatus('已生成');
+              scrollToBottom();
             } else if (lastEvent === 'card_done') {
               firstRealEvent = true;
               thinkingBubble.classList.remove('thinking');
