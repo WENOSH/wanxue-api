@@ -848,16 +848,19 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .auth-landing.show { display: flex; }
 .auth-landing .brand {
   text-align: center;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
 }
 .auth-landing .brand-icon {
-  font-size: 56px;
+  font-size: 48px;
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .auth-landing .brand-name {
   font-size: 28px;
@@ -877,6 +880,19 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   max-width: 360px;
   padding: 28px 24px 24px;
   box-shadow: 0 8px 32px rgba(45, 48, 71, 0.1);
+  flex-shrink: 0;
+}
+@media (max-height: 700px) {
+  .auth-landing .brand-icon { font-size: 36px; }
+  .auth-landing .brand-name { font-size: 22px; }
+  .auth-landing .brand { margin-bottom: 12px; }
+  .auth-landing .brand-desc { font-size: 12px; }
+  .auth-landing .auth-card { padding: 16px 18px 14px; }
+  .auth-landing .auth-tabs { margin-bottom: 12px; }
+  .auth-landing .auth-field { margin-bottom: 10px; }
+  .auth-landing .submit-btn { padding: 12px; font-size: 14px; }
+  .social-btn { padding: 8px 4px 6px; }
+  .social-btn .social-icon { font-size: 18px; }
 }
 .auth-landing .close-btn {
   position: absolute;
