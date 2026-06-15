@@ -122,11 +122,13 @@ class WanXueEngine:
         if diff_cfg is None:
             diff_cfg = get_difficulty_config()
         kind_hint = prompts.DIFFICULTY_KIND_HINTS.get(diff_cfg["key"], "难度适中")
+        goal_strategy = prompts.GOAL_DIFFICULTY_STRATEGY.get(goal, "")
         user_prompt = prompts.USER_PROMPT_TEMPLATE.format(
             topic=topic, age=age, goal=goal,
             difficulty_label=diff_cfg["label"],
             difficulty_desc=diff_cfg["desc"],
             difficulty_kind_hint=kind_hint,
+            goal_strategy=goal_strategy,
             chapters_count=diff_cfg["chapters"],
             cards_per_chapter=diff_cfg["cards"],
             total_cards=diff_cfg["chapters"] * diff_cfg["cards"],
@@ -245,6 +247,16 @@ class WanXueEngine:
         data["_chapter_totals"] = chapter_totals
         data["_total_cards"] = sum(chapter_totals[1:])
         data["_course_id"] = self._slugify(topic)
+
+        # 概念级学习记录（可选）
+        data.setdefault("_concept_log", [])
+
+        # 存储强度分析（可选）
+        data.setdefault("_storage_analysis", {
+            "fluency_level": "中",
+            "storage_strategy": f"建议{max(3, diff_cfg['chapters'])}天后复习",
+            "next_review_days": max(3, diff_cfg['chapters'])
+        })
 
         return data
 

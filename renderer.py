@@ -98,28 +98,49 @@ body {
   height: 3px; background: linear-gradient(90deg, #ff6b6b, #ffe66d);
   width: 0%; transition: width 0.4s;
 }
-/* 卡片区 */
+/* 卡片区 — 长卡片滚动形式 */
 .card-area {
   position: fixed;
   top: 92px; bottom: 70px; left: 0; right: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-top: env(safe-area-inset-top);
+  padding-bottom: 20px;
 }
 .chapter-section {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  /* 章节之间自动垂直排列 */
 }
+.chapter-section:not(:last-child) {
+  border-bottom: 2px solid rgba(255, 107, 107, 0.12);
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+}
+/* 章节分隔标题 */
+.chapter-divider {
+  padding: 16px 20px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  background: linear-gradient(90deg, rgba(255,107,107,0.05), transparent);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.chapter-divider .ch-icon { margin-right: 6px; }
 .card {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  margin: 0 auto;
-  width: 100%; max-width: 720px;
-  overflow-y: auto; padding: 20px 20px 30px;
-  opacity: 0; transform: translateX(40px);
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: none;
-  -webkit-overflow-scrolling: touch;
-}
-.card.active {
-  opacity: 1; transform: translateX(0);
+  position: relative;
+  max-width: 720px;
+  margin: 8px auto;
+  width: 100%;
+  padding: 20px 20px 24px;
+  background: var(--card-bg);
+  border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(45,48,71,0.06);
+  opacity: 1;
+  transform: none;
+  transition: none;
   pointer-events: auto;
 }
 /* 卡片标题 */
@@ -212,6 +233,21 @@ body {
   border-radius: 16px; padding: 20px; margin: 16px 0;
 }
 .card .challenge-box h3 { color: var(--primary); }
+/* 实践输入框 */
+.card .practice-input { margin: 12px 0; }
+.card .practice-input input[type="text"] {
+  padding: 10px 14px; font-size: 18px; width: 200px;
+  border: 2px solid var(--secondary); border-radius: 10px;
+  font-family: inherit; text-align: center;
+}
+.card .practice-input input:focus { outline: none; border-color: var(--primary); }
+/* Wisdom 诚实声明 */
+.card .wisdom-statement {
+  margin-top: 20px; padding: 16px;
+  background: #f8f5f0; border-radius: 12px; border: 1px dashed #ddd;
+  font-size: 14px; color: #6c6f7d; text-align: center;
+  line-height: 1.7;
+}
 .card .progress-dots {
   display: flex; justify-content: center; gap: 8px; margin: 16px 0;
 }
@@ -221,7 +257,7 @@ body {
 }
 .card .progress-dots .dot.done { background: var(--primary); }
 .card .progress-dots .dot.current { background: var(--secondary); transform: scale(1.3); }
-/* 底栏 */
+/* 底栏 — 长卡片模式下为固定进度条和回到顶部 */
 .bottom-bar {
   position: fixed; bottom: 0; left: 0; right: 0; height: 70px;
   background: white; box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
@@ -240,7 +276,7 @@ body {
 .bottom-bar .nav-btn:disabled {
   background: #ccc; cursor: not-allowed; box-shadow: none;
 }
-.bottom-bar .nav-btn.next {
+.bottom-bar .nav-btn.top-btn {
   background: var(--secondary);
   box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
 }
@@ -252,22 +288,22 @@ body {
   body { font-size: 18px; }
   .top-bar h1 { font-size: 17px; }
   .ch-tab { font-size: 13px; padding: 6px 12px; }
-  .card { padding: 18px 18px 26px; }
+  .card { padding: 14px 14px 20px; margin: 4px auto; }
   .card h2 { font-size: 24px; }
   .card p { font-size: 15px; }
   .card .scene-grid { grid-template-columns: 1fr; }
   .bottom-bar { padding: 0 12px; }
   .bottom-bar .nav-btn { padding: 10px 14px; font-size: 14px; }
-  .card-area { top: 80px; }
+  .card-area { top: 80px; bottom: 65px; }
 }
 @media (max-width: 360px) {
-  .card { padding: 12px 14px 20px; }
+  .card { padding: 10px 12px 16px; }
   .card h2 { font-size: 19px; }
   .card p { font-size: 14px; }
   .bottom-bar .nav-btn { padding: 8px 12px; font-size: 13px; }
 }
 @media (min-width: 768px) {
-  .card { padding: 28px 32px 40px; }
+  .card { padding: 24px 28px 32px; margin: 12px auto; }
   .card h2 { font-size: 26px; }
 }
 /* === 3层验证 Modal === */
@@ -362,94 +398,80 @@ function updateUI() {
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].classList.toggle('active', parseInt(tabs[i].dataset.ch) === currentCh);
   }
-  // 章节 section 可见性
+  // 长卡片模式：所有卡片都可见，只切换章节显示
   var sections = document.querySelectorAll('.chapter-section');
   for (var j = 0; j < sections.length; j++) {
     sections[j].style.display = parseInt(sections[j].dataset.ch) === currentCh ? 'block' : 'none';
   }
-  // 当前章节卡片
-  var cards = document.querySelectorAll('.card[data-ch="' + currentCh + '"]');
+  // 所有卡片 active（长卡片不需要单卡激活）
+  var cards = document.querySelectorAll('.card');
   for (var k = 0; k < cards.length; k++) {
-    cards[k].classList.toggle('active', k === currentIdx);
+    cards[k].classList.add('active');
   }
-  // 进度文字与按钮
+  // 进度文字
   var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
-  document.getElementById('prog-text').textContent = (currentIdx + 1) + ' / ' + total;
-  document.getElementById('btn-prev').disabled = currentIdx === 0 && currentCh === 1;
-  document.getElementById('btn-next').disabled = (function(){
-    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-    var maxCh = Math.max.apply(null, chapterIds);
-    if (currentCh < maxCh) return false;
-    return currentIdx >= total - 1;
-  })();
-  // 顶部进度条 — 使用章节内进度
-  var pct = total > 0 ? ((currentIdx + 1) / total) * 100 : 0;
-  document.getElementById('progress').style.width = pct + '%';
+  document.getElementById('prog-text').textContent = '共 ' + total + ' 张卡片';
+  // 顶部进度条 — 使用章节进度（长卡片模式显示为章节占比）
+  var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
+  var maxCh = Math.max.apply(null, chapterIds);
+  var overall = (currentCh / maxCh) * 100;
+  document.getElementById('progress').style.width = overall + '%';
   // 章节标题更新
   var activeTab = document.querySelector('.ch-tab.active');
   if (activeTab) {
     var title = activeTab.textContent || '';
-    document.querySelector('.top-bar h1').textContent = title + ' · 卡片 ' + (currentIdx + 1);
+    document.querySelector('.top-bar h1').textContent = title;
   }
-  // 滚动卡片到顶
-  var activeCard = document.querySelector('.card[data-ch="' + currentCh + '"][data-idx="' + currentIdx + '"]');
-  if (activeCard) activeCard.scrollTop = 0;
+  // 移除翻页按钮状态（长卡片不需要）
+  var prevBtn = document.getElementById('btn-prev');
+  var nextBtn = document.getElementById('btn-next');
+  if (prevBtn) prevBtn.style.display = 'none';
+  if (nextBtn) { nextBtn.textContent = '\u2191 回到顶部'; nextBtn.className = 'nav-btn top-btn'; }
 }
 
 // gotoCard：跳转到指定章节指定卡片
 function gotoCard(ch, idx) {
+  // 长卡片模式：跳转到章节（跳转到该章节最顶部）
   if (!CHAPTER_DATA[ch]) return;
-  var total = CHAPTER_DATA[ch].total;
-  if (idx < 0 || idx >= total) return;
   currentCh = ch;
-  currentIdx = idx;
+  currentIdx = idx || 0;
   saveProgress();
   updateUI();
-  _checkVerification(ch, idx);
+  // 滚动到该章节
+  var section = document.querySelector('.chapter-section[data-ch="' + ch + '"]');
+  if (section) section.scrollIntoView({behavior: 'smooth', block: 'start'});
+  _checkVerification(ch, currentIdx);
 }
 
-// 翻页
+// 翻页 — 长卡片模式下改为章节切换 / 回到顶部
 function goto(direction) {
-  var total = CHAPTER_DATA[currentCh].total;
-  var newIdx = currentIdx + direction;
-  if (newIdx < 0) {
-    // 上一章末尾
-    if (currentCh > 1) {
-      currentCh--;
-      currentIdx = CHAPTER_DATA[currentCh].total - 1;
-    }
-    saveProgress();
-    updateUI();
-    _checkVerification(currentCh, currentIdx);
-    return;
-  }
-  if (newIdx >= total) {
-    // 下一章开头
+  if (direction > 0) {
+    // 下一章
     var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-    var maxCh = Math.max.apply(null, chapterIds);
-    if (currentCh < maxCh) {
-      currentCh++;
-      currentIdx = 0;
+    chapterIds.sort(function(a,b){return a-b;});
+    var idx = chapterIds.indexOf(currentCh);
+    if (idx >= 0 && idx < chapterIds.length - 1) {
+      gotoCard(chapterIds[idx + 1], 0);
     }
-    saveProgress();
-    updateUI();
-    _checkVerification(currentCh, currentIdx);
-    return;
+  } else if (direction < 0) {
+    // 上一章
+    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
+    chapterIds.sort(function(a,b){return a-b;});
+    var idx = chapterIds.indexOf(currentCh);
+    if (idx > 0) {
+      gotoCard(chapterIds[idx - 1], 0);
+    }
+  } else {
+    // direction === 0: 回到顶部
+    var cardArea = document.querySelector('.card-area');
+    if (cardArea) cardArea.scrollTop = 0;
   }
-  // 同章翻页
-  currentIdx = newIdx;
-  saveProgress();
-  updateUI();
-  _checkVerification(currentCh, currentIdx);
 }
 
 // 章节切换
 function switchChapter(ch) {
   if (!CHAPTER_DATA[ch]) return;
-  currentCh = ch;
-  currentIdx = 0;
-  saveProgress();
-  updateUI();
+  gotoCard(ch, 0);
 }
 
 // quiz 互动
@@ -483,6 +505,23 @@ function speakCard(btn) {
   utterance.onend = function() { btn.classList.remove('speaking'); };
   utterance.onerror = function() { btn.classList.remove('speaking'); };
   window.speechSynthesis.speak(utterance);
+}
+
+// ===== 互动练习（practice 卡片） =====
+function checkPractice(inputId, correctAnswer, goodMsg, badMsg) {
+  var input = document.getElementById(inputId);
+  var fb = document.getElementById('fb-' + inputId);
+  if (!input || !fb) return;
+  var answer = input.value.trim();
+  if (answer === correctAnswer) {
+    fb.className = 'feedback show good';
+    fb.innerHTML = '🎉 ' + (goodMsg || '完全正确！');
+    input.disabled = true;
+  } else {
+    fb.className = 'feedback show bad';
+    fb.innerHTML = '🤔 ' + (badMsg || '再想想～');
+    // 不清空输入，让用户可以再试
+  }
 }
 
 function checkAnswer(btn, isCorrect, fbId) {
@@ -782,12 +821,36 @@ function _showL3Modal() {
 
 // 事件绑定
 document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('btn-prev').onclick = function() { goto(-1); };
-  document.getElementById('btn-next').onclick = function() { goto(1); };
+  document.getElementById('btn-next').onclick = function() {
+    var btn = document.getElementById('btn-next');
+    if (btn.textContent.indexOf('回到顶部') >= 0) {
+      goto(0);  // 滚动到顶部
+      return;
+    }
+    goto(1);  // 下一章
+  };
+  // 在章节切换后更新按钮文字
+  var _origUpdate = updateUI;
+  updateUI = function() {
+    _origUpdate();
+    // 如果是最后一章，按钮改为"回到顶部"
+    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
+    var maxCh = Math.max.apply(null, chapterIds);
+    var btn = document.getElementById('btn-next');
+    if (currentCh >= maxCh) {
+      btn.textContent = '\u2191 回到顶部';
+      btn.className = 'nav-btn top-btn';
+    } else {
+      btn.textContent = '下一章 \u2192';
+      btn.className = 'nav-btn';
+    }
+  };
   var tabs = document.querySelectorAll('.ch-tab');
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].onclick = function() { switchChapter(parseInt(this.dataset.ch)); };
   }
+  // 首次渲染（在覆盖之后，确保按钮文字正确）
+  updateUI();
 });
 
 // 键盘翻页
@@ -796,7 +859,6 @@ document.addEventListener('keydown', function(e) {
   else if (e.key === 'ArrowRight') { e.preventDefault(); goto(1); }
 });
 
-// 触摸滑动
 // ===== 字体大小控制 =====
 (function() {
   var FS_SIZES = ['sm', 'md', 'lg', 'xl'];
@@ -862,7 +924,6 @@ document.addEventListener('keydown', function(e) {
 
 // 启动
 loadProgress();
-updateUI();
 
 // 为所有 quiz 添加跳过按钮
 (function() {
@@ -872,8 +933,17 @@ updateUI();
     if (boxes[i].querySelector('.skip-quiz-btn')) continue;
     var skip = document.createElement('div');
     skip.style.cssText = 'text-align:right;margin-top:6px';
-    skip.innerHTML = '<button class="skip-quiz-btn" onclick="goto(1)" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 →</button>';
+    skip.innerHTML = '<button class="skip-quiz-btn" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 ↓</button>';
     boxes[i].appendChild(skip);
+    skip.querySelector('.skip-quiz-btn').onclick = function() {
+      // 在长卡片模式下，滚动到当前卡片下面
+      var card = this.closest('.card');
+      if (card) {
+        var next = card.nextElementSibling;
+        while (next && !next.classList.contains('card')) next = next.nextElementSibling;
+        if (next) next.scrollIntoView({behavior:'smooth', block:'start'});
+      }
+    };
   }
 })();
 """
@@ -944,9 +1014,9 @@ def render_html(course_data: dict) -> str:
 <div id="verifyContainer"></div>
 
 <div class="bottom-bar">
-  <button class="nav-btn" id="btn-prev">&larr; 上一张</button>
-  <span class="progress-text" id="prog-text">1 / 1</span>
-  <button class="nav-btn next" id="btn-next">下一张 &rarr;</button>
+  <button class="nav-btn" id="btn-prev" style="display:none">&larr; 上一章</button>
+  <span class="progress-text" id="prog-text">共 0 张卡片</span>
+  <button class="nav-btn" id="btn-next">下一章 &rarr;</button>
 </div>
 
 <script>
@@ -1026,8 +1096,16 @@ def _build_cards_html(chapters: list) -> str:
             )
             global_card_id += 1
 
+        ch_title = ch.get("title", f"第{ch_id}章")
+        ch_emoji = ch.get("emoji", "📖")
+        chapter_divider = (
+            f'<div class="chapter-divider" id="divider-{ch_id}">'
+            f'<span class="ch-icon">{ch_emoji}</span>{_html.escape(ch_title)}'
+            f'</div>\n'
+        )
         section = (
             f'<section class="chapter-section" data-ch="{ch_id}"{display_style}>\n'
+            + chapter_divider
             + "\n".join(cards_html)
             + "\n</section>"
         )
