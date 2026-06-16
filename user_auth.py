@@ -4,7 +4,7 @@
 当环境变量 DATABASE_URL 存在时自动使用 PostgreSQL。
 """
 
-import hashlib, secrets, json, logging, time, random, sqlite3
+import hashlib, secrets, json, logging, time, random
 from pathlib import Path
 
 log = logging.getLogger("wanxue.auth")
@@ -31,6 +31,7 @@ def _get_conn():
         conn.autocommit = False
         return conn
     else:
+        import sqlite3
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
@@ -51,12 +52,7 @@ def _execute(conn, sql, params=None):
     else:
         if params:
             return conn.execute(sql, params)
-        try:
-            return conn.execute(sql)
-        except sqlite3.ProgrammingError:
-            # SQLite conn.execute() 一次只支持一条语句
-            # 多语句 DDL 使用 executescript
-            return conn.executescript(sql)
+        return conn.execute(sql)
 
 
 def _fetchone(cursor_or_conn, sql, params=None):
@@ -129,15 +125,26 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS user_courses (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id),
-                    course_id VARCHAR(128) NOT NULL,
-                    course_title VARCHAR(256) DEFAULT '',
-                    course_emoji VARCHAR(16) DEFAULT '📖',
-                    total_chapters INTEGER DEFAULT 0,
-                    total_cards INTEGER DEFAULT 0,
-                    difficulty VARCHAR(32) DEFAULT '',
-                    created_at DOUBLE PRECISION NOT NULL,
-                    UNIQUE(user_id, course_id)
+                    course_id TEXT NOT NULL,
+                    course_title TEXT NOT NULL DEFAULT '',
+                    course_emoji TEXT NOT NULL DEFAULT '📖',
+                    total_chapters INTEGER NOT NULL DEFAULT 0,
+                    total_cards INTEGER NOT NULL DEFAULT 0,
+                    difficulty TEXT NOT NULL DEFAULT '',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS external_platforms (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    api_key TEXT DEFAULT '',
+                    course_title TEXT DEFAULT '',
+                    icon TEXT DEFAULT '🌐',
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ext_platforms_user ON external_platforms(user_id);
             """)
         else:
             _execute(conn, """
@@ -175,17 +182,27 @@ def init_db():
                 );
                 CREATE TABLE IF NOT EXISTS user_courses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
                     course_id TEXT NOT NULL,
-                    course_title TEXT DEFAULT '',
-                    course_emoji TEXT DEFAULT '📖',
-                    total_chapters INTEGER DEFAULT 0,
-                    total_cards INTEGER DEFAULT 0,
-                    difficulty TEXT DEFAULT '',
+                    course_title TEXT NOT NULL DEFAULT '',
+                    course_emoji TEXT NOT NULL DEFAULT '📖',
+                    total_chapters INTEGER NOT NULL DEFAULT 0,
+                    total_cards INTEGER NOT NULL DEFAULT 0,
+                    difficulty TEXT NOT NULL DEFAULT '',
                     created_at REAL NOT NULL,
-                    UNIQUE(user_id, course_id),
-                    FOREIGN KEY (user_id) REFERENCES users(id)
+                    updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS external_platforms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    api_key TEXT DEFAULT '',
+                    course_title TEXT DEFAULT '',
+                    icon TEXT DEFAULT '🌐',
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ext_platforms_user ON user_courses(user_id);
             """)
         conn.commit()
         log.info(f"数据库初始化完成 (backend={'PostgreSQL' if _USE_PG else 'SQLite'})")
@@ -549,88 +566,6 @@ def get_learning_records(user_id: int) -> list:
         conn.close()
 
 
-# ===== 我的课程 CRUD =====
-
-def save_user_course(user_id: int, course_id: str, course_title: str = "",
-                     course_emoji: str = "📖", total_chapters: int = 0,
-                     total_cards: int = 0, difficulty: str = "") -> dict:
-    """保存用户生成的课程到数据库"""
-    conn = _get_conn()
-    try:
-        now = time.time()
-        if _USE_PG:
-            sql = """INSERT INTO user_courses (user_id, course_id, course_title, course_emoji,
-                     total_chapters, total_cards, difficulty, created_at)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                     ON CONFLICT (user_id, course_id) DO UPDATE SET
-                     course_title = EXCLUDED.course_title, created_at = EXCLUDED.created_at"""
-        else:
-            sql = """INSERT OR REPLACE INTO user_courses
-                     (user_id, course_id, course_title, course_emoji,
-                      total_chapters, total_cards, difficulty, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
-        _execute(conn, sql, (user_id, course_id, course_title, course_emoji,
-                              total_chapters, total_cards, difficulty, now))
-        conn.commit()
-        return {"success": True}
-    except Exception as e:
-        conn.rollback()
-        log.error(f"保存课程失败: {e}")
-        return {"success": False, "error": str(e)}
-    finally:
-        conn.close()
-
-
-def list_user_courses(user_id: int) -> list:
-    """获取用户的所有课程"""
-    conn = _get_conn()
-    try:
-        rows = _fetchall(conn,
-            """SELECT id, course_id, course_title, course_emoji,
-               total_chapters, total_cards, difficulty, created_at
-               FROM user_courses WHERE user_id = %s
-               ORDER BY created_at DESC""" if _USE_PG else
-            """SELECT id, course_id, course_title, course_emoji,
-               total_chapters, total_cards, difficulty, created_at
-               FROM user_courses WHERE user_id = ?
-               ORDER BY created_at DESC""",
-            (user_id,))
-        keys = ["id", "course_id", "course_title", "course_emoji",
-                "total_chapters", "total_cards", "difficulty", "created_at"]
-        return [_row_to_dict(r, keys) for r in rows]
-    finally:
-        conn.close()
-
-
-def delete_user_course(user_id: int, course_id: str) -> dict:
-    """删除用户的课程"""
-    conn = _get_conn()
-    try:
-        _execute(conn,
-            "DELETE FROM user_courses WHERE user_id = %s AND course_id = %s" if _USE_PG
-            else "DELETE FROM user_courses WHERE user_id = ? AND course_id = ?",
-            (user_id, course_id))
-        _execute(conn,
-            "DELETE FROM learning_records WHERE user_id = %s AND course_id = %s" if _USE_PG
-            else "DELETE FROM learning_records WHERE user_id = ? AND course_id = ?",
-            (user_id, course_id))
-        conn.commit()
-        # 尝试删除磁盘上的课程文件（如果确认删除）
-        # from pathlib import Path
-        # from wanxue_api.config import OUTPUT_DIR
-        # import shutil
-        # course_dir = OUTPUT_DIR / course_id
-        # if course_dir.exists():
-        #     shutil.rmtree(str(course_dir))
-        return {"success": True}
-    except Exception as e:
-        conn.rollback()
-        log.error(f"删除课程失败: {e}")
-        return {"success": False, "error": str(e)}
-    finally:
-        conn.close()
-
-
 def get_learning_summary(user_id: int) -> dict:
     """获取学习摘要"""
     conn = _get_conn()
@@ -671,5 +606,166 @@ def get_learning_summary(user_id: int) -> dict:
             "badges": list(all_badges),
             "total_score": d["total_score"] or 0,
         }
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════
+#  用户课程管理
+# ══════════════════════════════════════════════════
+
+def save_user_course(user_id: int, course_id: str, course_title: str, course_emoji: str, total_chapters: int, total_cards: int, difficulty: str = "") -> dict:
+    """保存课程到我的课程"""
+    try:
+        conn = _get_conn()
+        now = time.time()
+
+        # 检查是否已存在
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM user_courses WHERE user_id = %s AND course_id = %s", (user_id, course_id))
+            existing = cur.fetchone()
+            cur.close()
+        else:
+            cur = conn.execute("SELECT id FROM user_courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+            existing = cur.fetchone()
+
+        if existing:
+            # 已存在，更新时间戳
+            if _USE_PG:
+                cur = conn.cursor()
+                cur.execute("UPDATE user_courses SET updated_at = %s WHERE id = %s", (now, existing[0]))
+                cur.close()
+            else:
+                conn.execute("UPDATE user_courses SET updated_at = ? WHERE id = ?", (now, existing[0]))
+            conn.commit()
+            return {"success": True}
+
+        # 新增
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO user_courses (user_id, course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, created_at, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (user_id, course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, now, now))
+            cur.close()
+        else:
+            conn.execute(
+                "INSERT INTO user_courses (user_id, course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (user_id, course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, now, now))
+        conn.commit()
+        log.info(f"Course saved: user={user_id}, course={course_id}")
+        return {"success": True}
+    except Exception as e:
+        log.error(f"Save course failed: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def list_user_courses(user_id: int) -> list:
+    """获取用户课程列表"""
+    try:
+        conn = _get_conn()
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute("SELECT course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, created_at FROM user_courses WHERE user_id = %s ORDER BY updated_at DESC", (user_id,))
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            cur.close()
+            courses = [dict(zip(cols, row)) for row in rows]
+        else:
+            rows = conn.execute("SELECT course_id, course_title, course_emoji, total_chapters, total_cards, difficulty, created_at FROM user_courses WHERE user_id = ? ORDER BY updated_at DESC", (user_id,)).fetchall()
+            courses = [{"course_id": r[0], "course_title": r[1], "course_emoji": r[2], "total_chapters": r[3], "total_cards": r[4], "difficulty": r[5], "created_at": r[6]} for r in rows]
+        return courses
+    except Exception as e:
+        log.error(f"List courses failed: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_user_course(user_id: int, course_id: str) -> dict:
+    """删除我的课程"""
+    try:
+        conn = _get_conn()
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM user_courses WHERE user_id = %s AND course_id = %s", (user_id, course_id))
+            cur.close()
+        else:
+            conn.execute("DELETE FROM user_courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+        conn.commit()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════
+#  外部课堂管理
+# ══════════════════════════════════════════════════
+
+def add_external_platform(user_id: int, name: str, url: str, api_key: str = "", course_title: str = "", icon: str = "🌐") -> dict:
+    """添加外部教育平台"""
+    try:
+        conn = _get_conn()
+        now = time.time()
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO external_platforms (user_id, name, url, api_key, course_title, icon, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (user_id, name, url, api_key, course_title, icon, now))
+            pid = cur.fetchone()[0]
+            cur.close()
+        else:
+            cur = conn.execute(
+                "INSERT INTO external_platforms (user_id, name, url, api_key, course_title, icon, created_at) VALUES (?,?,?,?,?,?,?)",
+                (user_id, name, url, api_key, course_title, icon, now))
+            pid = cur.lastrowid
+        conn.commit()
+        return {"success": True, "platform_id": pid}
+    except Exception as e:
+        log.error(f"Add platform failed: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
+def list_external_platforms(user_id: int) -> list:
+    """获取用户的外部平台列表"""
+    try:
+        conn = _get_conn()
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute("SELECT id, name, url, api_key, course_title, icon, created_at FROM external_platforms WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            cur.close()
+            return [dict(zip(cols, row)) for row in rows]
+        else:
+            rows = conn.execute("SELECT id, name, url, api_key, course_title, icon, created_at FROM external_platforms WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
+            return [{"id": r[0], "name": r[1], "url": r[2], "api_key": r[3], "course_title": r[4], "icon": r[5], "created_at": r[6]} for r in rows]
+    except Exception as e:
+        log.error(f"List platforms failed: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_external_platform(user_id: int, platform_id: int) -> dict:
+    """删除外部平台"""
+    try:
+        conn = _get_conn()
+        if _USE_PG:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM external_platforms WHERE id = %s AND user_id = %s", (platform_id, user_id))
+            cur.close()
+        else:
+            conn.execute("DELETE FROM external_platforms WHERE id = ? AND user_id = ?", (platform_id, user_id))
+        conn.commit()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()

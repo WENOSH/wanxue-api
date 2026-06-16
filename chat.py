@@ -133,23 +133,82 @@ INTENT_KEYWORDS = {
 }
 
 
-def detect_intent(text: str) -> str:
-    """轻量意图识别 - 基于关键词"""
-    text = text.lower().strip()
+async def _detect_intent(message: str, session=None) -> str:
+    """识别用户意图 — 区分学习请求 vs 普通对话"""
+    msg = message.strip()
+    if not msg:
+        return "other"
     
     # ★ 优先匹配：如果包含"简单了" 或 "太简单" → 是"太容易"的意思，要更难
-    if "太简单" in text or text.startswith("简单了"):
+    if "太简单" in msg or msg.startswith("简单了"):
         return "deepen"
     
-    for intent, kws in INTENT_KEYWORDS.items():
-        if any(kw in text for kw in kws):
-            return intent
-    # 默认：如果包含"刚才" / "那个" / 引用历史 → 当作追问
-    if any(k in text for k in ["刚才", "那个", "之前", "上面", "这个概念"]):
-        return "deepen"
-    # 包含学科名/概念 → 推断为新主题
-    if re.search(r'[\u4e00-\u9fa5a-zA-Z]{2,15}', text):
+    # 生成课程（明确的学习请求）
+    generate_kw = ["我想学", "教我", "什么是", "帮我学", "帮我懂",
+                   "生成课程", "给我讲", "讲解", "介绍一下", 
+                   "帮我掌握", "我想了解", "学一下", "快速学习",
+                   "万学一下", "/wanxue"]
+    if any(kw in msg for kw in generate_kw):
         return "generate"
+    
+    # 加深/追问（已经在上课中）
+    deepen_kw = ["再深", "更深入", "为什么", "原理是",
+                 "没懂", "不明白", "什么意思", "刚才",
+                 "那个", "之前", "上面", "这个概念",
+                 "详细讲", "展开讲"]
+    if any(kw in msg for kw in deepen_kw):
+        return "deepen"
+    
+    # 简化
+    if any(kw in msg for kw in ["再简单", "简单点", "通俗", "太复杂", "听不懂", "太深"]):
+        return "simplify"
+    
+    # 测验
+    quiz_kw = ["考考我", "出题", "练习", "测试", "测验", "做道题", "题目"]
+    if any(kw in msg for kw in quiz_kw):
+        return "quiz" if session and session.current_course else "other"
+    
+    # 复习
+    if any(kw in msg for kw in ["复习", "回顾", "闪卡", "recall"]):
+        return "review"
+    
+    # 翻译
+    if any(kw in msg for kw in ["翻译", "英文", "English", "日文", "Japanese"]):
+        return "translate"
+    # 保存
+    if any(kw in msg for kw in ["收藏", "保存", "下载"]):
+        return "save"
+    # 下一章/上一章
+    if any(kw in msg for kw in ["下一章", "继续", "下一个"]):
+        return "next"
+    if any(kw in msg for kw in ["上一章", "上一", "回到"]):
+        return "prev"
+    # 跳过验证
+    if any(kw in msg for kw in ["先不考", "不要考", "跳过", "别测了", "不测了", "不用测", "skip"]):
+        return "skip_check"
+    # 回答验证（仅在有待回答问题时才路由到 answer）
+    if any(kw in msg for kw in ["对", "是的", "正确", "✓", "yes", "不对", "不是", "错了", "错", "no",
+                                 "选a", "选b", "选c", "选d"]):
+        if session and session.current_check:
+            return "answer"
+    elif len(msg) == 1 and msg in "abcd":
+        if session and session.current_check:
+            return "answer"
+    # 难度反馈
+    if any(kw in msg for kw in ["正好", "刚好", "适中", "偏难", "偏易", "简单适中", "难度反馈", "试试新难度"]):
+        return "difficulty_feedback"
+    # 举例/应用
+    if any(kw in msg for kw in ["例子", "举例", "应用", "哪里用", "怎么用"]):
+        return "explore_more"
+    # 总结
+    if msg in ("总结",):
+        return "summary"
+    
+    # 当前有课程上下文 → 默认作为对话/追问
+    if session and session.current_course:
+        return "deepen"
+    
+    # 最后才是其他：普通对话，不触发课程生成
     return "other"
 
 
@@ -211,7 +270,7 @@ async def _stream_llm(
 # ── 引导消息生成 ─────────────────────────────────
 async def generate_guide(user_msg: str, session: ChatSession, api_key: str) -> dict:
     """生成 AI 的引导回复 + 识别意图"""
-    intent = detect_intent(user_msg)
+    intent = await _detect_intent(user_msg, session)
     topic = extract_topic(user_msg) if intent in ("generate", "deepen", "explore_more", "simplify", "translate") else (
         session.current_course.get("course_title", "") if session.current_course else ""
     )
@@ -221,6 +280,7 @@ async def generate_guide(user_msg: str, session: ChatSession, api_key: str) -> d
         "generate": f"好的，正在为你生成《{topic}》课程... ✨",
         "deepen": f"好的，让我更深入地讲讲关于「{topic}」的内容...",
         "simplify": "好的，我用更通俗的方式重新讲 ✏️",
+        "review": "好的，让我帮你回顾一下课程重点...",
         "difficulty_feedback": "好的，正在根据你的反馈调整课程难度...",
         "quiz": f"好的，正在为你生成关于《{topic}》的 3 道测验题...",
         "translate": "好的，正在生成翻译版本 🌍",
@@ -521,7 +581,22 @@ class CourseGeneratorHandler(BaseHandler):
             )
             engine = WanXueEngine()
             age = self.session.user_profile.get("age", "成人")
+            # 根据用户输入判断学习模式
+            msg_lower = self.message.lower()
             goal = self.session.user_profile.get("goal", "入门科普")
+            mode = self.session.user_profile.get("mode", "精学")
+            if any(kw in msg_lower for kw in ["速览", "快速", "简单看看", "扫一眼"]):
+                mode = "速览"
+                goal = "快速浏览"
+            elif any(kw in msg_lower for kw in ["精学", "深入", "详细", "好好学", "系统"]):
+                mode = "精学"
+                goal = "深入研究"
+            elif any(kw in msg_lower for kw in ["复习", "回顾", "巩固"]):
+                mode = "复习"
+            elif any(kw in msg_lower for kw in ["对比", "比较", "vs", "不同"]):
+                mode = "对比"
+            self.session.user_profile["mode"] = mode
+            self.session.user_profile["goal"] = goal
             course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
             self.session.current_course = course
             course["_total_cards"] = sum(
@@ -928,6 +1003,7 @@ DIRECTOR_ROUTES = {
     "next": NextHandler,
     "prev": PrevHandler,
     "summary": SummaryHandler,
+    "review": SummaryHandler,
 }
 
 

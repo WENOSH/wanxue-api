@@ -841,27 +841,23 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 .auth-landing {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  height: 100dvh; height: -webkit-fill-available;
   z-index: 500;
   background: linear-gradient(135deg, #fff8e7 0%, #ffe9b3 50%, #ffd9a0 100%);
   display: none;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  padding: 5vh max(20px, env(safe-area-inset-left)) 6vh max(20px, env(safe-area-inset-right));
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  justify-content: center;
+  padding: 20px;
 }
 .auth-landing.show { display: flex; }
 .auth-landing .brand {
   text-align: center;
-  margin-bottom: 20px;
-  flex-shrink: 0;
+  margin-bottom: 28px;
 }
 .auth-landing .brand-icon {
-  font-size: 48px;
+  font-size: 56px;
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 .auth-landing .brand-name {
   font-size: 28px;
@@ -881,22 +877,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   max-width: 360px;
   padding: 28px 24px 24px;
   box-shadow: 0 8px 32px rgba(45, 48, 71, 0.1);
-  flex-shrink: 0;
-  margin-top: auto;
-  margin-bottom: auto;
-}
-@media (max-height: 700px) {
-  .auth-landing { padding-top: 4vh; padding-bottom: 4vh; }
-  .auth-landing .brand-icon { font-size: 36px; }
-  .auth-landing .brand-name { font-size: 22px; }
-  .auth-landing .brand { margin-bottom: 10px; }
-  .auth-landing .brand-desc { font-size: 12px; }
-  .auth-landing .auth-card { padding: 14px 16px 12px; }
-  .auth-landing .auth-tabs { margin-bottom: 10px; }
-  .auth-landing .auth-field { margin-bottom: 8px; }
-  .auth-landing .submit-btn { padding: 10px; font-size: 14px; }
-  .social-btn { padding: 6px 4px 4px; }
-  .social-btn .social-icon { font-size: 16px; }
 }
 .auth-landing .close-btn {
   position: absolute;
@@ -1035,36 +1015,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   display: none;
 }
 .auth-landing .auth-error.show { display: block; }
-
-/* ===== Social Login ===== */
-.social-login { margin-top: 16px; }
-.social-divider {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 12px; font-size: 12px; color: var(--text-light);
-}
-.social-divider::before, .social-divider::after {
-  content: ''; flex: 1; height: 0; border-top: 1px solid var(--border);
-}
-.social-btns { display: flex; gap: 8px; }
-.social-btn {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  gap: 4px; padding: 12px 8px 8px; border: 1.5px solid var(--border);
-  border-radius: 12px; background: var(--card); cursor: pointer;
-  font-family: var(--font); font-size: 12px; color: var(--text);
-  transition: all 0.15s; position: relative;
-}
-.social-btn:active:not(:disabled) { transform: scale(0.96); }
-.social-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.social-btn .social-icon { font-size: 22px; }
-.social-btn .social-badge {
-  font-size: 9px; padding: 1px 5px; border-radius: 8px;
-  background: var(--border); color: var(--text-light);
-  white-space: nowrap;
-}
-.social-btn.wechat .social-badge { background: #e8f5e9; color: #2e7d32; }
-.social-btn.qq .social-badge { background: #e3f2fd; color: #1565c0; }
-.social-btn.phone .social-badge { background: #fff3e0; color: #e65100; }
-.social-btn.phone { border-color: #ffb74d; background: #fff8e1; }
 
 /* ===== Profile Overlay ===== */
 .profile-overlay {
@@ -1244,34 +1194,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 }
 .profile-logout-btn:active { background: var(--bg); }
 
-/* ===== My Courses 样式 ===== */
-.courses-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 0; border-bottom: 1px solid var(--border);
-}
-.courses-item:last-child { border-bottom: none; }
-.courses-item .ci-emoji { font-size: 22px; flex-shrink: 0; }
-.courses-item .ci-info { flex: 1; min-width: 0; }
-.courses-item .ci-title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.courses-item .ci-meta { font-size: 11px; color: var(--text-light); margin-top: 2px; }
-.courses-item .ci-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.courses-item .ci-btn {
-  padding: 4px 10px; border: none; border-radius: 6px;
-  font-size: 11px; font-weight: 600; cursor: pointer;
-  font-family: var(--font);
-}
-.courses-item .ci-btn.open { background: var(--secondary); color: #fff; }
-.courses-item .ci-btn.delete { background: #fff0f0; color: var(--primary); }
-.my-courses-btn {
-  width: 36px; height: 36px; border: none; border-radius: 50%;
-  background: var(--card); font-size: 16px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font); flex-shrink: 0;
-  box-shadow: var(--shadow);
-  transition: all 0.15s;
-}
-.my-courses-btn:active { transform: scale(0.9); background: var(--bg); }
-
 /* ===== Learning Advice ===== */
 .advice-box {
   background: linear-gradient(135deg, #fff8e7, #ffe66d22);
@@ -1302,6 +1224,121 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
 
 /* ===== Edit Nickname Modal ===== */
 .edit-name-modal .auth-field { margin-bottom: 0; }
+
+/* ===== Bottom Tab Navigation ===== */
+.tab-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 90;
+  background: rgba(255, 248, 231, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 16px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  max-width: 480px;
+  margin: 0 auto;
+  gap: 4px;
+}
+.tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-light);
+  cursor: pointer;
+  border-radius: 8px;
+  font-family: var(--font);
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  gap: 2px;
+}
+.tab-btn .tab-icon { font-size: 20px; }
+.tab-btn.active { color: var(--primary); font-weight: 700; }
+.tab-btn:active { background: var(--border); }
+
+/* ===== External Classroom Page ===== */
+.page-external {
+  display: none;
+  flex: 1;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom) + 60px);
+  max-width: 600px;
+  margin: 0 auto;
+  padding-top: calc(70px + env(safe-area-inset-top));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.page-external.show { display: block; }
+.page-external h2 { text-align: center; margin: 16px 0; color: #6c5ce7; }
+.page-external .ext-subtitle { text-align: center; color: #888; margin-bottom: 16px; font-size: 13px; }
+.ext-add-form {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.ext-add-form h3 { font-size: 15px; margin-bottom: 12px; }
+.ext-add-form input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-family: var(--font);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ext-add-form input:focus { outline: none; border-color: #6c5ce7; }
+.ext-add-btn {
+  width: 100%;
+  padding: 12px;
+  background: #6c5ce7;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.ext-add-btn:active { opacity: 0.9; }
+.ext-item {
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ext-item-info { flex: 1; min-width: 0; }
+.ext-item-name { font-weight: 700; }
+.ext-item-url { color: #888; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ext-del-btn {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+  font-family: var(--font);
+}
+.ext-del-btn:active { opacity: 0.8; }
+.ext-empty { text-align: center; color: #aaa; padding: 30px 0; font-size: 14px; }
+.ext-loading { text-align: center; color: #aaa; padding: 20px 0; }
 </style>
 </head>
 <body>
@@ -1312,7 +1349,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   #app { display: none !important; }
   .auth-landing { display: flex !important; }
   /* 已登录用户：通过 JS 添加 .logged-in 到 body 来反转 */
-  body.logged-in #app { display: flex !important; }
+  body.logged-in #app { display: block !important; }
   body.logged-in .auth-landing { display: none !important; }
 </style>
 <div class="auth-landing" id="authOverlay">
@@ -1343,24 +1380,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       <button class="submit-btn" id="loginSubmitBtn">登录</button>
       <div class="auth-forgot">
         <button id="forgotPwdBtn">忘记密码？</button>
-      </div>
-      <!-- Social Login -->
-      <div class="social-login">
-        <div class="social-divider"><span>其他登录方式</span></div>
-        <div class="social-btns">
-          <button class="social-btn wechat" id="wechatLoginBtn" disabled>
-            <span class="social-icon">💬</span><span>微信</span>
-            <span class="social-badge">即将支持</span>
-          </button>
-          <button class="social-btn qq" id="qqLoginBtn" disabled>
-            <span class="social-icon">🐧</span><span>QQ</span>
-            <span class="social-badge">即将支持</span>
-          </button>
-          <button class="social-btn phone" id="oneClickLoginBtn">
-            <span class="social-icon">📱</span><span>本机号码</span>
-            <span class="social-badge">一键登录</span>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -1404,10 +1423,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       </div>
       <button class="submit-btn" id="resetSubmitBtn">重置密码</button>
       <div class="auth-forgot">
-        <button id="backToLoginBtn">← 返回登录</button>
-      </div>
-      <div style="font-size:11px;color:var(--text-light);text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
-        💡 重置成功后自动跳转登录页，用新密码登录即可
+        <button id="backToLoginBtn">返回登录</button>
       </div>
     </div>
   </div>
@@ -1422,7 +1438,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
     <button class="tts-toggle" id="ttsToggleBtn" title="朗读模式：AI 消息自动朗读">🔇</button>
     <button class="new-chat-btn" id="newChatBtn" title="新会话">+</button>
-    <button class="my-courses-btn" id="myCoursesBtn" title="我的课程">📋</button>
     <button class="auth-btn" id="authBtn" style="display:none">登录</button>
     <button class="user-avatar-btn" id="userAvatarBtn" style="display:none">👤</button>
   </header>
@@ -1461,6 +1476,41 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       <textarea id="msgInput" rows="1" placeholder="想问什么？例如：我想学相对论…"></textarea>
     </div>
     <button class="send-btn" id="sendBtn">↑</button>
+  </div>
+
+  <!-- ===== Tab Navigation ===== -->
+  <div class="tab-bar" id="tabBar" style="display:none">
+    <button class="tab-btn active" id="tab-chat" onclick="switchAppTab('chat')">
+      <span class="tab-icon">💬</span>
+      <span>对话</span>
+    </button>
+    <button class="tab-btn" id="tab-external" onclick="switchAppTab('external')">
+      <span class="tab-icon">🌐</span>
+      <span>外部课堂</span>
+    </button>
+    <button class="tab-btn" id="tab-profile" onclick="switchAppTab('profile')">
+      <span class="tab-icon">👤</span>
+      <span>我的</span>
+    </button>
+  </div>
+
+  <!-- ===== External Classroom Page ===== -->
+  <div class="page-external" id="page-external">
+    <h2>🌐 外部课堂</h2>
+    <p class="ext-subtitle">接入外部教育平台，统一学习入口</p>
+
+    <div id="external-platform-list">
+      <div class="ext-empty">还没有添加外部平台</div>
+    </div>
+
+    <div class="ext-add-form">
+      <h3>添加教育平台</h3>
+      <input id="ext-name" placeholder="平台名称（如：清华大学 OpenMAIC）" type="text">
+      <input id="ext-url" placeholder="平台网址（https://...）" type="url">
+      <input id="ext-api-key" placeholder="API Key（选填）" type="text">
+      <input id="ext-course" placeholder="关联课程（选填）" type="text">
+      <button class="ext-add-btn" onclick="addExternalPlatform()">保存</button>
+    </div>
   </div>
 </div>
 
@@ -1542,12 +1592,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     </div>
 
     <!-- Learning Records -->
-    <div class="profile-card">
-      <div class="record-list-title">📋 我的课程</div>
-      <div id="myCoursesList">
-        <div class="record-empty" id="myCoursesEmpty">暂无课程</div>
-      </div>
-    </div>
     <div class="profile-card">
       <div class="record-list-title">📚 学习记录</div>
       <div id="recordsList">
@@ -2092,17 +2136,14 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               if (data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
-                // 自动保存到我的课程
-                saveCurrentCourseToProfile(data.course);
-                // 课程已生成但尚未学习，done=0（不标记为已完成）
+                // 课程完成时自动同步学习记录
                 setTimeout(function() {
                   syncLearningRecord({
-                    cards: { done: 0, total: data.course._total_cards || 0 }
+                    cards: { done: data.course._total_cards || 0, total: data.course._total_cards || 0 }
                   });
                 }, 100);
               }
               setStatus('已生成');
-              scrollToBottom();
             } else if (lastEvent === 'card_done') {
               firstRealEvent = true;
               thinkingBubble.classList.remove('thinking');
@@ -2703,31 +2744,13 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
         body: JSON.stringify({ phone: phone, password: password, sms_code: code })
       });
       if (r.success) {
-        // 注册成功，自动登录
-        try {
-          var loginR = await apiJsonAuth('/api/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ phone: phone, password: password })
-          });
-          if (loginR.success) {
-            state.token = loginR.token;
-            state.user = { token: loginR.token, user_id: loginR.user_id, nickname: loginR.nickname, phone: loginR.phone };
-            saveAuthState();
-            updateAuthUI();
-            closeAuthModal();
-            showToast('注册成功！欢迎使用万学', 'success');
-            showWelcome();
-            createSession().catch(function(e) { console.warn('[chat] 创建会话失败', e); });
-          } else {
-            showToast('注册成功，请登录', 'success');
-            loginPhone.value = phone;
-            switchTab('login');
-          }
-        } catch(e) {
-          showToast('注册成功，请登录', 'success');
-          loginPhone.value = phone;
-          switchTab('login');
-        }
+        showToast('注册成功！请登录', 'success');
+        // 清空注册表单并切到登录
+        regPhone.value = '';
+        regCode.value = '';
+        regPassword.value = '';
+        loginPhone.value = phone;
+        switchTab('login');
       } else {
         showAuthError(r.error || '注册失败');
       }
@@ -2803,8 +2826,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     } catch(e) {
       console.warn('[auth] 加载学习摘要失败', e);
     }
-    // 加载我的课程
-    loadMyCourses();
 
     // 加载学习记录
     try {
@@ -2843,76 +2864,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       document.getElementById('adviceLoading').style.display = 'none';
       document.getElementById('adviceText').style.display = '';
       document.getElementById('adviceText').textContent = '继续加油！每天进步一点点。';
-    }
-  }
-
-  // ===== 我的课程 =====
-
-  async function loadMyCourses() {
-    var list = document.getElementById('myCoursesList');
-    if (!list) return;
-    try {
-      var r = await apiJsonAuth('/api/auth/courses');
-      if (r.success && r.courses && r.courses.length > 0) {
-        list.innerHTML = r.courses.map(function(c) {
-          var title = c.course_title || '课程';
-          var emoji = c.course_emoji || '📖';
-          var meta = c.total_chapters + '章 ' + c.total_cards + '卡';
-          if (c.difficulty) meta += ' · ' + c.difficulty;
-          return '<div class="courses-item">' +
-            '<span class="ci-emoji">' + emoji + '</span>' +
-            '<div class="ci-info">' +
-              '<div class="ci-title">' + escapeHtml(title) + '</div>' +
-              '<div class="ci-meta">' + meta + '</div>' +
-            '</div>' +
-            '<div class="ci-actions">' +
-              '<button class="ci-btn open" data-cid="' + c.course_id + '">打开</button>' +
-              '<button class="ci-btn delete" data-cid="' + c.course_id + '">删除</button>' +
-            '</div></div>';
-        }).join('');
-        // 绑定事件
-        list.querySelectorAll('.ci-btn.open').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            closeProfile();
-            // 从 API 获取课程数据
-            var cid = this.dataset.cid;
-            window.open('/api/courses/' + encodeURIComponent(cid) + '/index.html', '_blank');
-          });
-        });
-        list.querySelectorAll('.ci-btn.delete').forEach(function(btn) {
-          btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (!confirm('确定删除这个课程吗？')) return;
-            var cid = this.dataset.cid;
-            var self = this;
-            apiJsonAuth('/api/auth/courses/' + encodeURIComponent(cid), {method: 'DELETE'}).then(function(r) {
-              if (r.success) {
-                showToast('已删除', 'info');
-                loadMyCourses();
-              } else {
-                showToast('删除失败', 'error');
-              }
-            });
-          });
-        });
-      } else {
-        list.innerHTML = '<div class="record-empty">暂无课程</div>';
-      }
-    } catch(e) {
-      list.innerHTML = '<div class="record-empty">加载失败</div>';
-    }
-  }
-
-  async function saveCurrentCourseToProfile(course) {
-    if (!state.token || !state.user || !course) return;
-    try {
-      var diff = localStorage.getItem('wanxue_difficulty') || '';
-      await apiJsonAuth('/api/auth/courses/save', {
-        method: 'POST',
-        body: JSON.stringify({course: course, difficulty: diff})
-      });
-    } catch(e) {
-      // 静默失败，不影响主流程
     }
   }
 
@@ -2996,15 +2947,6 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   // ===== Auth Event Listeners =====
   authBtn.addEventListener('click', function() { openAuthModal('login'); });
   userAvatarBtn.addEventListener('click', openProfile);
-  var myCoursesBtn = $('#myCoursesBtn');
-  if (myCoursesBtn) {
-    myCoursesBtn.addEventListener('click', function() {
-      if (!requireLogin()) return;
-      openProfile();
-      // 确保我的课程 tab 可见
-      setTimeout(function() { loadMyCourses(); }, 100);
-    });
-  }
   // 注意：登录模态框不可通过点击外部关闭，必须登录后才能使用
 
   // Tab 切换
@@ -3029,19 +2971,15 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   resetCodeBtn.addEventListener('click', function() { handleSendCode(resetPhone, resetCodeBtn); });
   forgotPwdBtn.addEventListener('click', function() { switchTab('reset'); });
   backToLoginBtn.addEventListener('click', function() { switchTab('login'); });
-  
-  // 一键登录（本机号码模拟）
-  var oneClickLoginBtn = $('#oneClickLoginBtn');
-  if (oneClickLoginBtn) {
-    oneClickLoginBtn.addEventListener('click', function() {
-      loginPhone.value = '13800138000';
-      loginPassword.value = '123456';
-      handleLogin();
-    });
-  }
 
   // 个人中心
-  profileBack.addEventListener('click', closeProfile);
+  profileBack.addEventListener('click', function() {
+    closeProfile();
+    // 恢复 tab 选中状态到 chat
+    var tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    document.getElementById('tab-chat').classList.add('active');
+  });
   profileLogoutBtn.addEventListener('click', function() {
     clearAuthState();
     closeProfile();
@@ -3067,6 +3005,122 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   }
   // 启动流程：initAuth 负责处理登录状态和页面切换
   initAuth();
+
+  // ===== 外部课堂 =====
+  window.switchAppTab = function(tab) {
+    var chatContainer = document.getElementById('chatContainer');
+    var inputBar = document.querySelector('.input-bar');
+    var progressBar = document.getElementById('progressBarWrap');
+    var pageExternal = document.getElementById('page-external');
+    var tabBar = document.getElementById('tabBar');
+    var tabs = document.querySelectorAll('.tab-btn');
+
+    // 隐藏所有
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    if (tab === 'chat') {
+      if (chatContainer) { chatContainer.style.display = ''; chatContainer.style.paddingBottom = 'calc(var(--input-height) + env(safe-area-inset-bottom) + 16px)'; }
+      if (inputBar) inputBar.style.display = '';
+      if (progressBar) progressBar.style.display = '';
+      if (pageExternal) pageExternal.classList.remove('show');
+      if (tabBar) tabBar.style.display = 'none';
+      closeProfile();
+    } else if (tab === 'external') {
+      if (chatContainer) chatContainer.style.display = 'none';
+      if (inputBar) inputBar.style.display = 'none';
+      if (progressBar) progressBar.style.display = 'none';
+      if (pageExternal) pageExternal.classList.add('show');
+      if (tabBar) tabBar.style.display = 'flex';
+      closeProfile();
+      loadExternalPlatforms();
+    } else if (tab === 'profile') {
+      if (chatContainer) chatContainer.style.display = 'none';
+      if (inputBar) inputBar.style.display = 'none';
+      if (progressBar) progressBar.style.display = 'none';
+      if (pageExternal) pageExternal.classList.remove('show');
+      if (tabBar) tabBar.style.display = 'flex';
+      openProfile();
+    }
+  };
+
+  function loadExternalPlatforms() {
+    var list = document.getElementById('external-platform-list');
+    if (!list) return;
+    list.innerHTML = '<div class="ext-loading">加载中...</div>';
+    var token = localStorage.getItem('wanxue_token');
+    if (!token) { list.innerHTML = '<div class="ext-empty">请先登录</div>'; return; }
+    fetch('/api/auth/external-platforms', { headers: {'Authorization':'Bearer '+token} })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!data.success || !data.platforms || !data.platforms.length) {
+          list.innerHTML = '<div class="ext-empty">还没有添加外部平台</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < data.platforms.length; i++) {
+          var p = data.platforms[i];
+          html += '<div class="ext-item">'
+            + '<div class="ext-item-info">'
+            + '<div class="ext-item-name">' + (p.icon||'🌐') + ' ' + escapeHtml(p.name) + '</div>'
+            + '<div class="ext-item-url">' + escapeHtml(p.url) + '</div>'
+            + '</div>'
+            + '<button class="ext-del-btn" onclick="deleteExternalPlatform(' + p.id + ')">删除</button>'
+            + '</div>';
+        }
+        list.innerHTML = html;
+      })
+      .catch(function(){
+        list.innerHTML = '<div class="ext-empty">加载失败</div>';
+      });
+  }
+
+  window.addExternalPlatform = function() {
+    var name = document.getElementById('ext-name').value.trim();
+    var url = document.getElementById('ext-url').value.trim();
+    if (!name || !url) { showToast('请填写平台名称和网址', 'info'); return; }
+    var token = localStorage.getItem('wanxue_token');
+    if (!token) { showToast('请先登录', 'error'); return; }
+    var data = {
+      name: name,
+      url: url,
+      api_key: document.getElementById('ext-api-key').value.trim(),
+      course_title: document.getElementById('ext-course').value.trim()
+    };
+    fetch('/api/auth/external-platforms', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify(data)
+    }).then(function(r){ return r.json(); }).then(function(res){
+      if (res.success) {
+        showToast('添加成功！', 'success');
+        loadExternalPlatforms();
+        document.getElementById('ext-name').value='';
+        document.getElementById('ext-url').value='';
+        document.getElementById('ext-api-key').value='';
+        document.getElementById('ext-course').value='';
+      } else {
+        showToast('添加失败: ' + (res.error||'未知错误'), 'error');
+      }
+    }).catch(function(e){
+      showToast('添加失败: ' + e.message, 'error');
+    });
+  };
+
+  window.deleteExternalPlatform = function(id) {
+    if (!confirm('确定删除该平台？')) return;
+    var token = localStorage.getItem('wanxue_token');
+    fetch('/api/auth/external-platforms/' + id, {
+      method:'DELETE',
+      headers:{'Authorization':'Bearer '+token}
+    }).then(function(r){ return r.json(); }).then(function(res){
+      if (res.success) {
+        loadExternalPlatforms();
+      } else {
+        showToast('删除失败', 'error');
+      }
+    });
+  };
 })();
 </script>
 

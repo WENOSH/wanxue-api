@@ -62,7 +62,9 @@ engine = WanXueEngine()
 from wanxue_api.user_auth import (
     init_db, register, login, verify_token, send_sms_code,
     reset_password, update_profile, save_learning_record,
-    get_learning_records, get_learning_summary
+    get_learning_records, get_learning_summary,
+    save_user_course, list_user_courses, delete_user_course,
+    add_external_platform, list_external_platforms, delete_external_platform
 )
 
 
@@ -145,7 +147,7 @@ async def health():
 
 
 @app.post("/api/generate-course")
-async def generate_course(req: GenerateRequest):
+async def generate_course(req: GenerateRequest, authorization: str = Header(None)):
     log.info(f"生成课程请求: topic={req.topic}, age={req.age}, goal={req.goal}")
 
     # 1. 调用引擎生成课程数据
@@ -172,6 +174,22 @@ async def generate_course(req: GenerateRequest):
 
     log.info(f"课程已保存: {course_id}")
 
+    # 自动保存到用户的课程列表（如已登录）
+    try:
+        token_user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+        if token_user:
+            save_user_course(
+                user_id=token_user["user_id"],
+                course_id=course.get("_course_id", ""),
+                course_title=course.get("course_title", ""),
+                course_emoji=course.get("course_emoji", "📖"),
+                total_chapters=len(course.get("chapters", [])),
+                total_cards=course.get("_total_cards", 0),
+                difficulty=req.difficulty or "",
+            )
+    except Exception as e:
+        log.warning(f"Auto-save course failed (non-critical): {e}")
+
     return {
         "success": True,
         "course": course,
@@ -184,7 +202,7 @@ async def generate_course(req: GenerateRequest):
 
 
 @app.post("/api/upload/material")
-async def upload_material(file: UploadFile = File(...), topic: str = "", age: str = "成人", goal: str = "入门科普"):
+async def upload_material(file: UploadFile = File(...), topic: str = "", age: str = "成人", goal: str = "入门科普", authorization: str = Header(None)):
     """上传学习材料生成课程"""
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -224,6 +242,22 @@ async def upload_material(file: UploadFile = File(...), topic: str = "", age: st
         (output_dir / "index.html").write_text(clean_html, encoding="utf-8")
         with open(str(output_dir / "course.json"), "w", encoding="utf-8") as f:
             json.dump(course_data, f, ensure_ascii=False, indent=2)
+
+        # 自动保存到用户的课程列表（如已登录）
+        try:
+            token_user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+            if token_user:
+                save_user_course(
+                    user_id=token_user["user_id"],
+                    course_id=course_data.get("_course_id", ""),
+                    course_title=course_data.get("course_title", ""),
+                    course_emoji=course_data.get("course_emoji", "📖"),
+                    total_chapters=len(course_data.get("chapters", [])),
+                    total_cards=course_data.get("_total_cards", 0),
+                    difficulty="",
+                )
+        except Exception as e:
+            log.warning(f"Auto-save course failed (non-critical): {e}")
 
         return {
             "success": True,
@@ -933,6 +967,47 @@ async def auth_get_learning_summary(authorization: str = Header(None)):
     return {"success": True, **summary}
 
 
+# ── 外部课堂 API ──────────────────────────────────
+
+
+@app.get("/api/auth/external-platforms")
+async def get_external_platforms(authorization: str = Header(None)):
+    """获取我的外部平台列表"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录", "platforms": []}
+    platforms = list_external_platforms(user["user_id"])
+    return {"success": True, "platforms": platforms}
+
+
+@app.post("/api/auth/external-platforms")
+async def add_external_platform_route(request: Request, authorization: str = Header(None)):
+    """添加外部平台"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录"}
+    body = await request.json()
+    result = add_external_platform(
+        user_id=user["user_id"],
+        name=body.get("name", ""),
+        url=body.get("url", ""),
+        api_key=body.get("api_key", ""),
+        course_title=body.get("course_title", ""),
+        icon=body.get("icon", "🌐"),
+    )
+    return result
+
+
+@app.delete("/api/auth/external-platforms/{platform_id}")
+async def delete_external_platform_route(platform_id: int, authorization: str = Header(None)):
+    """删除外部平台"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录"}
+    result = delete_external_platform(user["user_id"], platform_id)
+    return result
+
+
 @app.get("/api/auth/learning/advice")
 async def get_learning_advice(authorization: str = Header(None)):
     """AI 个性化学习建议 — 根据用户学习记录生成"""
@@ -986,6 +1061,45 @@ async def get_learning_advice(authorization: str = Header(None)):
         advice = "继续加油！每天学习一点点，知识就会慢慢积累起来。试着回顾一下学过的内容，巩固记忆效果更好哦。"
 
     return {"success": True, "advice": advice}
+
+
+# ── 我的课程管理 ──────────────────────────────────
+
+@app.get("/api/auth/courses")
+async def list_my_courses(authorization: str = Header(None)):
+    """获取我的课程列表"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期", "courses": []}
+    courses = list_user_courses(user["user_id"])
+    return {"success": True, "courses": courses}
+
+
+@app.post("/api/auth/courses/save")
+async def save_my_course(request: Request, authorization: str = Header(None)):
+    """保存课程到我的课程"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    body = await request.json()
+    course_id = body.get("course_id", "")
+    course_title = body.get("course_title", "课程")
+    course_emoji = body.get("course_emoji", "📖")
+    total_chapters = body.get("total_chapters", 0)
+    total_cards = body.get("total_cards", 0)
+    difficulty = body.get("difficulty", "")
+    result = save_user_course(user["user_id"], course_id, course_title, course_emoji, total_chapters, total_cards, difficulty)
+    return result
+
+
+@app.delete("/api/auth/courses/{course_id}")
+async def delete_my_course(course_id: str, authorization: str = Header(None)):
+    """删除我的课程"""
+    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
+    if not user:
+        return {"success": False, "error": "未登录或登录已过期"}
+    result = delete_user_course(user["user_id"], course_id)
+    return result
 
 
 @app.get("/", response_class=HTMLResponse)
