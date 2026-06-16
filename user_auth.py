@@ -147,7 +147,7 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_ext_platforms_user ON external_platforms(user_id);
             """)
         else:
-            _execute(conn, """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     phone TEXT UNIQUE NOT NULL,
