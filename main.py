@@ -22,13 +22,12 @@ if _PKG_NAME not in sys.modules:
     _spec.loader.exec_module(_pkg)
 
 # ── 标准库 / 第三方 ──────────────────────────────
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
-from fastapi import Header
 import json, logging, time, tempfile, os
 
 # ── 本地模块（通过注册的包导入，相对导入可正常工作）──
