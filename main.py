@@ -22,17 +22,18 @@ if _PKG_NAME not in sys.modules:
     _spec.loader.exec_module(_pkg)
 
 # ── 标准库 / 第三方 ──────────────────────────────
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import Header
-import json, logging, time
+import json, logging, time, tempfile, os
 
 # ── 本地模块（通过注册的包导入，相对导入可正常工作）──
 from wanxue_api.engine import WanXueEngine
+from wanxue_api.upload_handler import extract_text_from_file, save_uploaded_file, ALLOWED_EXTENSIONS
 from wanxue_api.config import HOST, PORT, OUTPUT_DIR, STATIC_DIR
 from wanxue_api import chat as chat_module
 from wanxue_api import prompts
@@ -80,12 +81,6 @@ class GenerateRequest(BaseModel):
     age: str = "成人"
     goal: str = "入门科普"
     difficulty: str = "3-标准"  # 1-入门 / 2-基础 / 3-标准 / 4-进阶 / 5-挑战
-    # TODO(2026-06-16): 考虑新增 mode 字段，支持速览/精学/复习/对比四种学习模式
-    #   - 速览: 只出知识地图+核心概念（step 1-3 子集）
-    #   - 精学(默认): 完整 7 步课程
-    #   - 复习: 基于已有 mastery-log 出闪卡+Quiz
-    #   - 对比: 双主题知识地图 + 对比探索
-    #  详见 wanxue skill SKILL.md 2.1 节
 
 
 class ChatRequest(BaseModel):
@@ -183,6 +178,71 @@ async def generate_course(req: GenerateRequest):
         "html_url": f"/api/courses/{course_id}/index.html",
         "course_id": course_id,
     }
+
+
+# ── 上传材料转课件 (2026-06-16 新增) ──────────────────
+
+
+@app.post("/api/upload/material")
+async def upload_material(file: UploadFile = File(...), topic: str = "", age: str = "成人", goal: str = "入门科普"):
+    """上传学习材料生成课程"""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}，支持: {', '.join(ALLOWED_EXTENSIONS)}")
+
+    # 保存上传文件到临时目录
+    tmp_dir = os.path.join(tempfile.gettempdir(), "wanxue_uploads")
+    filepath = save_uploaded_file(await file.read(), file.filename, tmp_dir)
+
+    try:
+        # 提取文本
+        source_text = extract_text_from_file(filepath)
+        if not source_text.strip():
+            raise HTTPException(status_code=400, detail="无法从文件中提取文本内容")
+        log.info(f"Upload: {file.filename} -> {len(source_text)} chars extracted")
+
+        # 调用课程生成引擎（传入 source_text 作为 material_text）
+        engine = WanXueEngine()
+        course_data = await engine.generate_course(
+            topic=topic or f"基于{os.path.splitext(file.filename)[0]}",
+            age=age,
+            goal=goal,
+            material_text=source_text,
+        )
+
+        course_id = course_data.get("_course_id", "course")
+        output_dir = OUTPUT_DIR / course_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 渲染 HTML
+        if _render_html is not None:
+            html_content = _render_html(course_data)
+        else:
+            html_content = _fallback_html(course_data)
+
+        clean_html = html_content.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+        (output_dir / "index.html").write_text(clean_html, encoding="utf-8")
+        with open(str(output_dir / "course.json"), "w", encoding="utf-8") as f:
+            json.dump(course_data, f, ensure_ascii=False, indent=2)
+
+        return {
+            "success": True,
+            "course_id": course_id,
+            "course_title": course_data.get("course_title", ""),
+            "total_chapters": len(course_data.get("chapters", [])),
+            "total_cards": course_data.get("_total_cards", 0),
+            "url": f"/api/courses/{course_id}/index.html"
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        # 清理临时文件
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except:
+            pass
 
 
 @app.get("/api/courses")
@@ -530,7 +590,7 @@ async def chat_bind_course(req: BindCourseRequest):
     if not s:
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
     s.current_course = req.course
-    s.add_msg("system", f"已加载课程《{req.course.get('course_title', '?')}》共 {req.course.get('_total_cards', 0)} 卡片")
+    s.add_msg("system", f"已加载课程《{req.course.get('course_title', '?')}》共 {req.course.get('_total_cards', 0)} 卡片", role="system")
     return {"ok": True, "course_title": s.current_course.get("course_title", "")}
 
 
@@ -926,48 +986,6 @@ async def get_learning_advice(authorization: str = Header(None)):
         advice = "继续加油！每天学习一点点，知识就会慢慢积累起来。试着回顾一下学过的内容，巩固记忆效果更好哦。"
 
     return {"success": True, "advice": advice}
-
-
-# ===== 我的课程 API =====
-
-@app.post("/api/auth/courses/save")
-async def save_course(request: Request, authorization: str = Header(None)):
-    """保存课程到我的课程"""
-    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
-    if not user:
-        return {"success": False, "error": "未登录或登录已过期"}
-    body = await request.json()
-    course = body.get("course", {})
-    diff = body.get("difficulty", "")
-    result = save_user_course(
-        user_id=user["user_id"],
-        course_id=course.get("_course_id", course.get("course_id", "")),
-        course_title=course.get("course_title", "课程"),
-        course_emoji=course.get("course_emoji", "📖"),
-        total_chapters=len(course.get("chapters", [])),
-        total_cards=course.get("_total_cards", 0),
-        difficulty=diff,
-    )
-    return result
-
-
-@app.get("/api/auth/courses")
-async def list_courses(authorization: str = Header(None)):
-    """获取我的课程列表"""
-    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
-    if not user:
-        return {"success": False, "error": "未登录或登录已过期", "courses": []}
-    courses = list_user_courses(user["user_id"])
-    return {"success": True, "courses": courses}
-
-
-@app.delete("/api/auth/courses/{course_id}")
-async def delete_course(course_id: str, authorization: str = Header(None)):
-    """删除我的课程"""
-    user = verify_token(authorization.replace("Bearer ", "")) if authorization else None
-    if not user:
-        return {"success": False, "error": "未登录或登录已过期"}
-    return delete_user_course(user["user_id"], course_id)
 
 
 @app.get("/", response_class=HTMLResponse)

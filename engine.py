@@ -40,6 +40,7 @@ class WanXueEngine:
         age: str = "成人",
         goal: str = "入门科普",
         difficulty: str = None,
+        material_text: str = None,
     ) -> dict:
         """生成完整课程
 
@@ -48,19 +49,20 @@ class WanXueEngine:
             age: 学习者年龄，小学/中学/大学/成人
             goal: 学习目标，入门科普/考试准备/项目应用/深入研究
             difficulty: 难度等级，1-入门/2-基础/3-标准/4-进阶/5-挑战
+            material_text: 用户上传的学习材料文本（可选），传入时使用 MATERIAL_BASED_PROMPT
 
         Returns:
             dict: 结构化课程数据
         """
         diff_cfg = get_difficulty_config(difficulty)
-        log.info(f"🚀 开始生成课程: topic={topic}, age={age}, goal={goal}, diff={diff_cfg['key']}")
+        log.info(f"🚀 开始生成课程: topic={topic}, age={age}, goal={goal}, diff={diff_cfg['key']}, has_material={bool(material_text)}")
 
         if not self.api_key:
             log.warning("⚠️ 未配置 API KEY，使用降级模板")
             return self._fallback_course(topic, age, goal, diff_cfg)
 
         try:
-            course_data = await self._call_llm(topic, age, goal, diff_cfg)
+            course_data = await self._call_llm(topic, age, goal, diff_cfg, material_text)
         except Exception as e:
             log.warning(f"⚠️ 首次 LLM 调用失败，尝试补全: {e}")
             course_data = None
@@ -117,7 +119,7 @@ class WanXueEngine:
         log.error(f"❌ LLM 生成失败，使用降级模板")
         return self._fallback_course(topic, age, goal, diff_cfg)
 
-    async def _call_llm(self, topic: str, age: str, goal: str, diff_cfg: dict = None) -> dict:
+    async def _call_llm(self, topic: str, age: str, goal: str, diff_cfg: dict = None, material_text: str = None) -> dict:
         """调用 LLM API 生成课程 JSON"""
         if diff_cfg is None:
             diff_cfg = get_difficulty_config()
@@ -133,6 +135,14 @@ class WanXueEngine:
             cards_per_chapter=diff_cfg["cards"],
             total_cards=diff_cfg["chapters"] * diff_cfg["cards"],
         )
+
+        # 如果有上传材料，使用 MATERIAL_BASED_PROMPT 包裹 user_prompt
+        if material_text:
+            material_prompt = prompts.MATERIAL_BASED_PROMPT.format(
+                source_text=material_text
+            )
+            user_prompt = f"{material_prompt}\n\n同时，请满足以下要求：\n{user_prompt}"
+            log.info(f"使用材料增强提示（材料文本 {len(material_text)} 字）")
 
         # 注入维基百科知识（减少幻觉）
         wiki_context = enrich_course_context(topic)

@@ -265,419 +265,10 @@ async def handle_user_message(
     session.add_msg("assistant_guide", guide["guide_message"], intent=guide["intent"], topic=guide["topic"])
 
     intent = guide["intent"]
-    topic = guide["topic"]
 
-    # 2) 根据意图分支
-    if intent == "generate":
-        # 直接走 engine 生成课程，绑定到会话
-        from wanxue_api.config import get_difficulty_config
-        diff_key = session.user_profile.get("difficulty", session.user_profile.get("difficulty_level", "3-标准"))
-        diff_cfg = get_difficulty_config(diff_key)
-        total_est = diff_cfg["chapters"] * diff_cfg["cards"]
-        yield {"event": "thinking", "data": f"正在生成《{topic}》课程 {diff_cfg['chapters']} 章约 {total_est} 卡片（{diff_cfg['label']}）..."}
-        try:
-            from wanxue_api.engine import WanXueEngine
-            from wanxue_api.embedded_check import (
-                plan_checks, generate_l1_check, generate_l2_check, generate_l3_check,
-            )
-            engine = WanXueEngine()
-            age = session.user_profile.get("age", "成人")
-            goal = session.user_profile.get("goal", "入门科普")
-            # 调用 engine（不是流式的，但用户期待立刻看到）
-            course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
-            session.current_course = course
-            # 重新计算 total_cards + 记录到 session
-            course["_total_cards"] = sum(
-                len(ch.get("cards", [])) for ch in course.get("chapters", [])
-            )
-            session.total_chapters = len(course.get("chapters", []))
-            session.total_cards = course["_total_cards"]
-            session.chapters_viewed = set()
-            session.cards_viewed = set()
-            session.chapter_current = 0
-            session.user_profile["last_topic"] = topic
-            session.add_msg("system", f"已生成《{topic}》{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
-            # ★ 保存课程到磁盘（供分享链接和直接查看使用）
-            try:
-                from wanxue_api.renderer import render_html
-                from pathlib import Path
-                course_id = course.get("_course_id", WanXueEngine._slugify(topic))
-                course_dir = OUTPUT_DIR / course_id
-                course_dir.mkdir(parents=True, exist_ok=True)
-                html_content = render_html(course)
-                clean_html = html_content.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
-                (course_dir / "index.html").write_text(clean_html, encoding="utf-8")
-                (course_dir / "course.json").write_text(
-                    json.dumps(course, ensure_ascii=False, indent=2).encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace'),
-                    encoding="utf-8"
-                )
-                log.info(f"课程已保存到磁盘: {course_id}")
-            except Exception as save_err:
-                log.warning(f"保存课程到磁盘失败（不影响对话）: {save_err}")
-            # ★ 关键改动：规划 3 层嵌入式验证
-            plans = await plan_checks(course)
-            session.check_plans = plans
-            # 把 plan 摘要（不暴露全量）通过事件告诉前端
-            plans_summary = [
-                {
-                    "level": p.level,
-                    "trigger_at": p.trigger_at,
-                    "chapter_idx": p.chapter_idx,
-                    "description": p.description,
-                }
-                for p in plans
-            ]
-            yield {
-                "event": "checks_planned",
-                "data": {"plans": plans_summary, "count": len(plans)}
-            }
-            # 课程数据
-            yield {
-                "event": "course_done",
-                "data": {
-                    "topic": topic,
-                    "course": course,
-                    "message": f"《{topic}》课程已生成完毕！共 {session.total_chapters} 章 {session.total_cards} 卡片。学习过程中我会自然地穿插一些小验证帮你巩固～",
-                    "progress": make_progress(session),
-                }
-            }
-            # ★ 立即触发第一层 L1（第一章关键概念反问）
-            if plans and plans[0].level == "L1":
-                l1 = await generate_l1_check(plans[0], api_key)
-                session.current_check = l1
-                yield {"event": "embedded_check", "data": l1}
-        except Exception as e:
-            yield {"event": "error", "data": f"课程生成失败: {e}"}
-        return
-
-    elif intent == "simplify":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
-            return
-        # 降一档难度重新生成完整课程
-        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
-        current_diff = session.user_profile.get("difficulty_level", "3-标准")
-        diff_keys = list(DIFFICULTY_LEVELS.keys())
-        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
-        new_idx = max(0, current_idx - 1)
-        new_diff = diff_keys[new_idx]
-        session.user_profile["difficulty_level"] = new_diff
-        new_cfg = get_difficulty_config(new_diff)
-        yield {"event": "thinking", "data": f"正在用更通俗的方式重新生成课程（{new_cfg['label']}）..."}
-        try:
-            from wanxue_api.engine import WanXueEngine
-            engine = WanXueEngine()
-            age = session.user_profile.get("age", "成人")
-            goal = session.user_profile.get("goal", "入门科普")
-            course = await engine.generate_course(
-                topic=topic, age=age, goal=goal, difficulty=new_diff
-            )
-            session.current_course = course
-            course["_total_cards"] = sum(
-                len(ch.get("cards", [])) for ch in course.get("chapters", [])
-            )
-            session.total_chapters = len(course.get("chapters", []))
-            session.total_cards = course["_total_cards"]
-            session.user_profile["last_topic"] = topic
-            session.add_msg("system", f"已重新生成通俗版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
-            yield {
-                "event": "course_done",
-                "data": {
-                    "topic": topic,
-                    "course": course,
-                    "message": f"已重新生成通俗版《{topic}》（{new_cfg['label']}），共 {session.total_chapters} 章 {session.total_cards} 卡片",
-                    "difficulty_level": new_diff,
-                }
-            }
-        except Exception as e:
-            yield {"event": "error", "data": f"重新生成失败: {e}"}
-        return
-
-    elif intent == "deepen":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
-            return
-        # 升一档难度重新生成完整课程
-        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
-        current_diff = session.user_profile.get("difficulty_level", "3-标准")
-        diff_keys = list(DIFFICULTY_LEVELS.keys())
-        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
-        new_idx = min(len(diff_keys) - 1, current_idx + 1)
-        new_diff = diff_keys[new_idx]
-        session.user_profile["difficulty_level"] = new_diff
-        new_cfg = get_difficulty_config(new_diff)
-        yield {"event": "thinking", "data": f"正在更深入地重新生成课程（{new_cfg['label']}）..."}
-        try:
-            from wanxue_api.engine import WanXueEngine
-            engine = WanXueEngine()
-            age = session.user_profile.get("age", "成人")
-            goal = session.user_profile.get("goal", "入门科普")
-            course = await engine.generate_course(
-                topic=topic, age=age, goal=goal, difficulty=new_diff
-            )
-            session.current_course = course
-            course["_total_cards"] = sum(
-                len(ch.get("cards", [])) for ch in course.get("chapters", [])
-            )
-            session.total_chapters = len(course.get("chapters", []))
-            session.total_cards = course["_total_cards"]
-            session.user_profile["last_topic"] = topic
-            session.add_msg("system", f"已重新生成深入版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
-            yield {
-                "event": "course_done",
-                "data": {
-                    "topic": topic,
-                    "course": course,
-                    "message": f"已重新生成深入版《{topic}》（{new_cfg['label']}），共 {session.total_chapters} 章 {session.total_cards} 卡片",
-                    "difficulty_level": new_diff,
-                }
-            }
-        except Exception as e:
-            yield {"event": "error", "data": f"重新生成失败: {e}"}
-        return
-
-    elif intent == "difficulty_feedback":
-        # 用户学完课程后对难度做出反馈
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "先学一门课再说感受吧～"}}
-            return
-        user_msg_lower = user_msg.lower().strip()
-        # 解析难度反馈
-        if any(w in user_msg_lower for w in ["太简单", "太浅", "偏易"]):
-            # 用户觉得太简单 → 需要更难
-            feedback_diff = "4-进阶"
-            direction = "更深更难"
-            diff_change = +1
-        elif any(w in user_msg_lower for w in ["太难", "太深", "偏难"]):
-            # 用户觉得太难 → 需要更简单
-            feedback_diff = "2-基础"
-            direction = "更简单易懂"
-            diff_change = -1
-        else:
-            # "正好" / "刚好" / "适中" → 保持，记录
-            session.user_profile["difficulty_level"] = "3-标准"
-            session.user_profile["difficulty_fit"] = "正好"
-            yield {
-                "event": "difficulty_feedback",
-                "data": {
-                    "rating": "just_right",
-                    "message": "太好了！这个难度正适合你。之后的课程都会保持这个难度水平 💪",
-                    "difficulty_level": "3-标准",
-                }
-            }
-            return
-
-        # 保存用户的难度偏好
-        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
-        diff_keys = list(DIFFICULTY_LEVELS.keys())
-        current_diff = session.user_profile.get("difficulty_level", "3-标准")
-        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
-        new_idx = max(0, min(len(diff_keys) - 1, current_idx + diff_change))
-        new_diff = diff_keys[new_idx]
-        session.user_profile["difficulty_level"] = new_diff
-        session.user_profile["difficulty_fit"] = direction
-        new_cfg = get_difficulty_config(new_diff)
-        yield {
-            "event": "difficulty_feedback",
-            "data": {
-                "rating": "too_easy" if diff_change > 0 else "too_hard",
-                "message": f"明白了！你觉得这个课程{direction}。我重新生成一个更合适难度的版本吧（{new_cfg['label']}）？或者输入「试试新难度」开始～",
-                "suggested_difficulty": new_diff,
-                "difficulty_label": new_cfg["label"],
-            }
-        }
-        return
-
-    elif intent == "explore_more":
-        # 生成单张补卡
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么主题～"}}
-            return
-        yield {"event": "thinking", "data": f"正在补充关于「{topic}」的卡片..."}
-        async for ev in stream_single_card(topic, session, api_key, card_type="concept"):
-            yield ev
-        return
-
-    elif intent == "quiz":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先学一门课，然后我就能出测验题啦～"}}
-            return
-        yield {"event": "thinking", "data": f"正在生成关于「{topic}」的 3 道测验题..."}
-        async for ev in stream_quiz_questions(topic, session, api_key):
-            yield ev
-        return
-
-    elif intent == "translate":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先学一门课，然后我可以翻译～"}}
-            return
-        yield {"event": "thinking", "data": "正在翻译成英文版..."}
-        async for ev in stream_translate(session, api_key, lang="en"):
-            yield ev
-        return
-
-    elif intent == "skip_check":
-        # 用户说"先不考" → 本次会话不再触发该层
-        if session.current_check:
-            level = session.current_check.get("level", "L1")
-            session.skip_levels.add(level)
-            session.current_check = None
-            yield {
-                "event": "guide",
-                "data": {
-                    "guide_message": f"好的，本次学习不再做 {level} 验证。继续学～",
-                    "intent": "skip_check",
-                }
-            }
-        else:
-            yield {
-                "event": "guide",
-                "data": {"guide_message": "好的，继续～", "intent": "skip_check"}
-            }
-        return
-
-    elif intent == "answer":
-        # 用户在回答当前的 check
-        if not session.current_check:
-            yield {
-                "event": "guide",
-                "data": {"guide_message": "没有待回答的问题哦～", "intent": "answer"}
-            }
-            return
-        # 简单匹配：yes/no
-        text = user_msg.strip().lower()
-        check = session.current_check
-        is_correct = None
-        if check["level"] == "L1":
-            # 是非题
-            yes_words = ["对", "是的", "正确", "yes", "yep", "yeah", "✓", "✔"]
-            no_words = ["不对", "不是", "错", "no", "nope", "✗", "✘"]
-            if any(w in text for w in yes_words):
-                is_correct = check.get("answer", "yes") == "yes"
-            elif any(w in text for w in no_words):
-                is_correct = check.get("answer", "yes") == "no"
-            else:
-                is_correct = None
-            session.checks_answered += 1
-            if is_correct:
-                session.checks_correct += 1
-            yield {
-                "event": "check_result",
-                "data": {
-                    "level": "L1",
-                    "is_correct": is_correct,
-                    "expected": check.get("answer"),
-                    "clarify": check.get("clarify", "") if not is_correct else "",
-                    "concept_title": check.get("concept_title", ""),
-                    "progress": make_progress(session),
-                }
-            }
-            session.current_check = None
-        elif check["level"] == "L2":
-            # 4 选 1
-            for opt in ["a", "b", "c", "d"]:
-                if f"选{opt}" == text or text == opt:
-                    # 在 questions 里找对应的"对"的题来对比
-                    # 简化：标记已回答
-                    session.checks_answered += 1
-                    session.current_check = None
-                    yield {
-                        "event": "check_result",
-                        "data": {
-                            "level": "L2",
-                            "selected": opt.upper(),
-                            "message": f"已记录你的选择 {opt.upper()}",
-                            "progress": make_progress(session),
-                        }
-                    }
-                    return
-            yield {
-                "event": "guide",
-                "data": {"guide_message": "请用 A/B/C/D 回答哦", "intent": "answer"}
-            }
-        elif check["level"] == "L3":
-            for opt in ["a", "b", "c", "d"]:
-                if f"选{opt}" == text or text == opt:
-                    correct_opt = None
-                    for o in check.get("options", []):
-                        if o.get("correct"):
-                            correct_opt = o["id"]
-                            break
-                    is_correct = (opt.upper() == correct_opt)
-                    session.checks_answered += 1
-                    if is_correct:
-                        session.checks_correct += 1
-                    yield {
-                        "event": "check_result",
-                        "data": {
-                            "level": "L3",
-                            "selected": opt.upper(),
-                            "correct": correct_opt,
-                            "is_correct": is_correct,
-                            "options": check.get("options", []),
-                            "progress": make_progress(session),
-                        }
-                    }
-                    session.current_check = None
-                    return
-            yield {
-                "event": "guide",
-                "data": {"guide_message": "请用 A/B/C/D 回答哦", "intent": "answer"}
-            }
-        return
-
-    elif intent == "next":
-        # 用户翻到下一章 → 可能触发 L1/L2/L3 验证
-        from wanxue_api.embedded_check import (
-            generate_l1_check, generate_l2_check, generate_l3_check,
-        )
-        # 找下一个待触发的 plan
-        triggered = False
-        for p in session.check_plans:
-            if p.level == "L1" and "L1" not in session.skip_levels:
-                if p.chapter_idx is not None and p.chapter_idx not in session.chapter_done_sent and p.chapter_idx > 0:
-                    session.chapter_done_sent.add(p.chapter_idx)
-                    l1 = await generate_l1_check(p, api_key)
-                    session.current_check = l1
-                    yield {"event": "embedded_check", "data": l1}
-                    triggered = True
-                    break
-            elif p.level == "L2" and "L2" not in session.skip_levels:
-                if p.chapter_idx is not None and p.chapter_idx not in session.chapter_done_sent:
-                    session.chapter_done_sent.add(p.chapter_idx)
-                    l2 = await generate_l2_check(p, session.current_course, api_key)
-                    session.current_check = l2
-                    yield {"event": "embedded_check", "data": l2}
-                    triggered = True
-                    break
-            elif p.level == "L3" and "L3" not in session.skip_levels:
-                if "course_done" not in session.chapter_done_sent:
-                    session.chapter_done_sent.add("course_done")
-                    l3 = await generate_l3_check(session.current_course, api_key)
-                    session.current_check = l3
-                    yield {"event": "embedded_check", "data": l3}
-                    triggered = True
-                    break
-        if not triggered:
-            yield {"event": "guide", "data": {"guide_message": "继续～", "intent": "next"}}
-        return
-
-    elif intent == "prev":
-        yield {"event": "guide", "data": {"guide_message": "回到上一章...", "intent": "prev"}}
-        return
-
-    elif intent == "summary":
-        if not session.current_course:
-            yield {"event": "guide", "data": {"guide_message": "请先学一门课～"}}
-            return
-        # 不走 LLM，直接用本地课程数据生成摘要
-        summary = build_summary(session.current_course)
-        yield {"event": "summary", "data": summary}
-        return
-
-    else:
-        yield {"event": "guide", "data": {"guide_message": guide["guide_message"]}}
-
+    # 2) Director 路由分发
+    async for ev in director_route(intent, session, user_msg, api_key):
+        yield ev
 
 # ── 单卡生成（流式） ─────────────────────────────
 async def stream_single_card(
@@ -899,3 +490,454 @@ def build_summary(course: dict) -> dict:
             "fun_facts": funfacts[:2],
         })
     return summary
+
+
+# ===== Director 路由系统 =====
+
+class BaseHandler:
+    """Handler 基类"""
+    def __init__(self, session, message, api_key):
+        self.session = session
+        self.message = message
+        self.api_key = api_key
+
+    async def handle(self):
+        raise NotImplementedError
+
+
+class CourseGeneratorHandler(BaseHandler):
+    """课程生成 Handler — 生成完整课程 + 嵌入式验证"""
+    async def handle(self):
+        topic = extract_topic(self.message)
+        from wanxue_api.config import get_difficulty_config
+        diff_key = self.session.user_profile.get("difficulty", self.session.user_profile.get("difficulty_level", "3-标准"))
+        diff_cfg = get_difficulty_config(diff_key)
+        total_est = diff_cfg["chapters"] * diff_cfg["cards"]
+        yield {"event": "thinking", "data": f"正在生成《{topic}》课程 {diff_cfg['chapters']} 章约 {total_est} 卡片（{diff_cfg['label']}）..."}
+        try:
+            from wanxue_api.engine import WanXueEngine
+            from wanxue_api.embedded_check import (
+                plan_checks, generate_l1_check, generate_l2_check, generate_l3_check,
+            )
+            engine = WanXueEngine()
+            age = self.session.user_profile.get("age", "成人")
+            goal = self.session.user_profile.get("goal", "入门科普")
+            course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
+            self.session.current_course = course
+            course["_total_cards"] = sum(
+                len(ch.get("cards", [])) for ch in course.get("chapters", [])
+            )
+            self.session.total_chapters = len(course.get("chapters", []))
+            self.session.total_cards = course["_total_cards"]
+            self.session.chapters_viewed = set()
+            self.session.cards_viewed = set()
+            self.session.chapter_current = 0
+            self.session.user_profile["last_topic"] = topic
+            self.session.add_msg("system", f"已生成《{topic}》{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            try:
+                from wanxue_api.renderer import render_html
+                from pathlib import Path
+                course_id = course.get("_course_id", WanXueEngine._slugify(topic))
+                course_dir = OUTPUT_DIR / course_id
+                course_dir.mkdir(parents=True, exist_ok=True)
+                html_content = render_html(course)
+                clean_html = html_content.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+                (course_dir / "index.html").write_text(clean_html, encoding="utf-8")
+                (course_dir / "course.json").write_text(
+                    json.dumps(course, ensure_ascii=False, indent=2).encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace'),
+                    encoding="utf-8"
+                )
+                log.info(f"课程已保存到磁盘: {course_id}")
+            except Exception as save_err:
+                log.warning(f"保存课程到磁盘失败（不影响对话）: {save_err}")
+            plans = await plan_checks(course)
+            self.session.check_plans = plans
+            plans_summary = [
+                {"level": p.level, "trigger_at": p.trigger_at, "chapter_idx": p.chapter_idx, "description": p.description}
+                for p in plans
+            ]
+            yield {"event": "checks_planned", "data": {"plans": plans_summary, "count": len(plans)}}
+            yield {
+                "event": "course_done",
+                "data": {
+                    "topic": topic,
+                    "course": course,
+                    "message": f"《{topic}》课程已生成完毕！共 {self.session.total_chapters} 章 {self.session.total_cards} 卡片。学习过程中我会自然地穿插一些小验证帮你巩固～",
+                    "progress": make_progress(self.session),
+                }
+            }
+            if plans and plans[0].level == "L1":
+                l1 = await generate_l1_check(plans[0], self.api_key)
+                self.session.current_check = l1
+                yield {"event": "embedded_check", "data": l1}
+        except Exception as e:
+            yield {"event": "error", "data": f"课程生成失败: {e}"}
+
+
+class ReExplainerHandler(BaseHandler):
+    """重新解释 Handler — 换角度、降低难度"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
+            return
+        topic = self.session.user_profile.get("last_topic", "")
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        current_diff = self.session.user_profile.get("difficulty_level", "3-标准")
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = max(0, current_idx - 1)
+        new_diff = diff_keys[new_idx]
+        self.session.user_profile["difficulty_level"] = new_diff
+        new_cfg = get_difficulty_config(new_diff)
+        yield {"event": "thinking", "data": f"正在用更通俗的方式重新生成课程（{new_cfg['label']}）..."}
+        try:
+            from wanxue_api.engine import WanXueEngine
+            engine = WanXueEngine()
+            age = self.session.user_profile.get("age", "成人")
+            goal = self.session.user_profile.get("goal", "入门科普")
+            course = await engine.generate_course(
+                topic=topic, age=age, goal=goal, difficulty=new_diff
+            )
+            self.session.current_course = course
+            course["_total_cards"] = sum(
+                len(ch.get("cards", [])) for ch in course.get("chapters", [])
+            )
+            self.session.total_chapters = len(course.get("chapters", []))
+            self.session.total_cards = course["_total_cards"]
+            self.session.user_profile["last_topic"] = topic
+            self.session.add_msg("system", f"已重新生成通俗版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            yield {
+                "event": "course_done",
+                "data": {
+                    "topic": topic,
+                    "course": course,
+                    "message": f"已重新生成通俗版《{topic}》（{new_cfg['label']}），共 {self.session.total_chapters} 章 {self.session.total_cards} 卡片",
+                    "difficulty_level": new_diff,
+                }
+            }
+        except Exception as e:
+            yield {"event": "error", "data": f"重新生成失败: {e}"}
+
+
+class SocraticTutorHandler(BaseHandler):
+    """苏格拉底式 Tutor — 升难度、深入原理"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么～"}}
+            return
+        topic = self.session.user_profile.get("last_topic", "")
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        current_diff = self.session.user_profile.get("difficulty_level", "3-标准")
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = min(len(diff_keys) - 1, current_idx + 1)
+        new_diff = diff_keys[new_idx]
+        self.session.user_profile["difficulty_level"] = new_diff
+        new_cfg = get_difficulty_config(new_diff)
+        yield {"event": "thinking", "data": f"正在更深入地重新生成课程（{new_cfg['label']}）..."}
+        try:
+            from wanxue_api.engine import WanXueEngine
+            engine = WanXueEngine()
+            age = self.session.user_profile.get("age", "成人")
+            goal = self.session.user_profile.get("goal", "入门科普")
+            course = await engine.generate_course(
+                topic=topic, age=age, goal=goal, difficulty=new_diff
+            )
+            self.session.current_course = course
+            course["_total_cards"] = sum(
+                len(ch.get("cards", [])) for ch in course.get("chapters", [])
+            )
+            self.session.total_chapters = len(course.get("chapters", []))
+            self.session.total_cards = course["_total_cards"]
+            self.session.user_profile["last_topic"] = topic
+            self.session.add_msg("system", f"已重新生成深入版《{topic}》（{new_cfg['label']}）{len(course.get('chapters', []))} 章 / {course['_total_cards']} 卡")
+            yield {
+                "event": "course_done",
+                "data": {
+                    "topic": topic,
+                    "course": course,
+                    "message": f"已重新生成深入版《{topic}》（{new_cfg['label']}），共 {self.session.total_chapters} 章 {self.session.total_cards} 卡片",
+                    "difficulty_level": new_diff,
+                }
+            }
+        except Exception as e:
+            yield {"event": "error", "data": f"重新生成失败: {e}"}
+
+
+class DifficultyFeedbackHandler(BaseHandler):
+    """难度反馈 Handler"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "先学一门课再说感受吧～"}}
+            return
+        user_msg_lower = self.message.lower().strip()
+        if any(w in user_msg_lower for w in ["太简单", "太浅", "偏易"]):
+            feedback_diff = "4-进阶"
+            direction = "更深更难"
+            diff_change = +1
+        elif any(w in user_msg_lower for w in ["太难", "太深", "偏难"]):
+            feedback_diff = "2-基础"
+            direction = "更简单易懂"
+            diff_change = -1
+        else:
+            self.session.user_profile["difficulty_level"] = "3-标准"
+            self.session.user_profile["difficulty_fit"] = "正好"
+            yield {
+                "event": "difficulty_feedback",
+                "data": {
+                    "rating": "just_right",
+                    "message": "太好了！这个难度正适合你。之后的课程都会保持这个难度水平 💪",
+                    "difficulty_level": "3-标准",
+                }
+            }
+            return
+        from wanxue_api.config import DIFFICULTY_LEVELS, get_difficulty_config
+        diff_keys = list(DIFFICULTY_LEVELS.keys())
+        current_diff = self.session.user_profile.get("difficulty_level", "3-标准")
+        current_idx = diff_keys.index(current_diff) if current_diff in diff_keys else 2
+        new_idx = max(0, min(len(diff_keys) - 1, current_idx + diff_change))
+        new_diff = diff_keys[new_idx]
+        self.session.user_profile["difficulty_level"] = new_diff
+        self.session.user_profile["difficulty_fit"] = direction
+        new_cfg = get_difficulty_config(new_diff)
+        yield {
+            "event": "difficulty_feedback",
+            "data": {
+                "rating": "too_easy" if diff_change > 0 else "too_hard",
+                "message": f"明白了！你觉得这个课程{direction}。我重新生成一个更合适难度的版本吧（{new_cfg['label']}）？或者输入「试试新难度」开始～",
+                "suggested_difficulty": new_diff,
+                "difficulty_label": new_cfg["label"],
+            }
+        }
+
+
+class ExploreMoreHandler(BaseHandler):
+    """举例/应用 Handler"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先告诉我你想学什么主题～"}}
+            return
+        topic = self.session.user_profile.get("last_topic", "")
+        yield {"event": "thinking", "data": f"正在补充关于「{topic}」的卡片..."}
+        async for ev in stream_single_card(topic, self.session, self.api_key, card_type="concept"):
+            yield ev
+
+
+class QuizEngineHandler(BaseHandler):
+    """测验引擎 Handler — 生成测验题"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先学一门课，然后我就能出测验题啦～"}}
+            return
+        topic = self.session.user_profile.get("last_topic", "")
+        yield {"event": "thinking", "data": f"正在生成关于「{topic}」的 3 道测验题..."}
+        async for ev in stream_quiz_questions(topic, self.session, self.api_key):
+            yield ev
+
+
+class TranslateHandler(BaseHandler):
+    """翻译 Handler"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先学一门课，然后我可以翻译～"}}
+            return
+        topic = self.session.user_profile.get("last_topic", "")
+        yield {"event": "thinking", "data": "正在翻译成英文版..."}
+        async for ev in stream_translate(self.session, self.api_key, lang="en"):
+            yield ev
+
+
+class SkipCheckHandler(BaseHandler):
+    """跳过验证 Handler"""
+    async def handle(self):
+        if self.session.current_check:
+            level = self.session.current_check.get("level", "L1")
+            self.session.skip_levels.add(level)
+            self.session.current_check = None
+            yield {
+                "event": "guide",
+                "data": {
+                    "guide_message": f"好的，本次学习不再做 {level} 验证。继续学～",
+                    "intent": "skip_check",
+                }
+            }
+        else:
+            yield {
+                "event": "guide",
+                "data": {"guide_message": "好的，继续～", "intent": "skip_check"}
+            }
+
+
+class AnswerHandler(BaseHandler):
+    """回答验证 Handler — L1/L2/L3 判断"""
+    async def handle(self):
+        if not self.session.current_check:
+            yield {
+                "event": "guide",
+                "data": {"guide_message": "没有待回答的问题哦～", "intent": "answer"}
+            }
+            return
+        text = self.message.strip().lower()
+        check = self.session.current_check
+        is_correct = None
+        if check["level"] == "L1":
+            yes_words = ["对", "是的", "正确", "yes", "yep", "yeah", "✓", "✔"]
+            no_words = ["不对", "不是", "错", "no", "nope", "✗", "✘"]
+            if any(w in text for w in yes_words):
+                is_correct = check.get("answer", "yes") == "yes"
+            elif any(w in text for w in no_words):
+                is_correct = check.get("answer", "yes") == "no"
+            else:
+                is_correct = None
+            self.session.checks_answered += 1
+            if is_correct:
+                self.session.checks_correct += 1
+            yield {
+                "event": "check_result",
+                "data": {
+                    "level": "L1",
+                    "is_correct": is_correct,
+                    "expected": check.get("answer"),
+                    "clarify": check.get("clarify", "") if not is_correct else "",
+                    "concept_title": check.get("concept_title", ""),
+                    "progress": make_progress(self.session),
+                }
+            }
+            self.session.current_check = None
+        elif check["level"] == "L2":
+            for opt in ["a", "b", "c", "d"]:
+                if f"选{opt}" == text or text == opt:
+                    self.session.checks_answered += 1
+                    self.session.current_check = None
+                    yield {
+                        "event": "check_result",
+                        "data": {
+                            "level": "L2",
+                            "selected": opt.upper(),
+                            "message": f"已记录你的选择 {opt.upper()}",
+                            "progress": make_progress(self.session),
+                        }
+                    }
+                    return
+            yield {
+                "event": "guide",
+                "data": {"guide_message": "请用 A/B/C/D 回答哦", "intent": "answer"}
+            }
+        elif check["level"] == "L3":
+            for opt in ["a", "b", "c", "d"]:
+                if f"选{opt}" == text or text == opt:
+                    correct_opt = None
+                    for o in check.get("options", []):
+                        if o.get("correct"):
+                            correct_opt = o["id"]
+                            break
+                    is_correct = (opt.upper() == correct_opt)
+                    self.session.checks_answered += 1
+                    if is_correct:
+                        self.session.checks_correct += 1
+                    yield {
+                        "event": "check_result",
+                        "data": {
+                            "level": "L3",
+                            "selected": opt.upper(),
+                            "correct": correct_opt,
+                            "is_correct": is_correct,
+                            "options": check.get("options", []),
+                            "progress": make_progress(self.session),
+                        }
+                    }
+                    self.session.current_check = None
+                    return
+            yield {
+                "event": "guide",
+                "data": {"guide_message": "请用 A/B/C/D 回答哦", "intent": "answer"}
+            }
+
+
+class NextHandler(BaseHandler):
+    """下一章 Handler — 可能触发嵌入式验证"""
+    async def handle(self):
+        from wanxue_api.embedded_check import (
+            generate_l1_check, generate_l2_check, generate_l3_check,
+        )
+        triggered = False
+        for p in self.session.check_plans:
+            if p.level == "L1" and "L1" not in self.session.skip_levels:
+                if p.chapter_idx is not None and p.chapter_idx not in self.session.chapter_done_sent and p.chapter_idx > 0:
+                    self.session.chapter_done_sent.add(p.chapter_idx)
+                    l1 = await generate_l1_check(p, self.api_key)
+                    self.session.current_check = l1
+                    yield {"event": "embedded_check", "data": l1}
+                    triggered = True
+                    break
+            elif p.level == "L2" and "L2" not in self.session.skip_levels:
+                if p.chapter_idx is not None and p.chapter_idx not in self.session.chapter_done_sent:
+                    self.session.chapter_done_sent.add(p.chapter_idx)
+                    l2 = await generate_l2_check(p, self.session.current_course, self.api_key)
+                    self.session.current_check = l2
+                    yield {"event": "embedded_check", "data": l2}
+                    triggered = True
+                    break
+            elif p.level == "L3" and "L3" not in self.session.skip_levels:
+                if "course_done" not in self.session.chapter_done_sent:
+                    self.session.chapter_done_sent.add("course_done")
+                    l3 = await generate_l3_check(self.session.current_course, self.api_key)
+                    self.session.current_check = l3
+                    yield {"event": "embedded_check", "data": l3}
+                    triggered = True
+                    break
+        if not triggered:
+            yield {"event": "guide", "data": {"guide_message": "继续～", "intent": "next"}}
+
+
+class PrevHandler(BaseHandler):
+    """上一章 Handler"""
+    async def handle(self):
+        yield {"event": "guide", "data": {"guide_message": "回到上一章...", "intent": "prev"}}
+
+
+class SummaryHandler(BaseHandler):
+    """课程摘要 Handler"""
+    async def handle(self):
+        if not self.session.current_course:
+            yield {"event": "guide", "data": {"guide_message": "请先学一门课～"}}
+            return
+        summary = build_summary(self.session.current_course)
+        yield {"event": "summary", "data": summary}
+
+
+class LightChatHandler(BaseHandler):
+    """日常闲聊 Handler — 兜底"""
+    async def handle(self):
+        # 已在 guide 中输出引导，这里不做额外处理
+        return
+        yield  # noqa: 保持 generator 性质
+
+
+# 路由表：intent → Handler 类
+DIRECTOR_ROUTES = {
+    "generate": CourseGeneratorHandler,
+    "simplify": ReExplainerHandler,
+    "deepen": SocraticTutorHandler,
+    "difficulty_feedback": DifficultyFeedbackHandler,
+    "explore_more": ExploreMoreHandler,
+    "quiz": QuizEngineHandler,
+    "translate": TranslateHandler,
+    "skip_check": SkipCheckHandler,
+    "answer": AnswerHandler,
+    "next": NextHandler,
+    "prev": PrevHandler,
+    "summary": SummaryHandler,
+}
+
+
+async def director_route(intent: str, session, message: str, api_key: str):
+    """Director 路由入口 — 根据意图分派到对应 Handler"""
+    handler_class = DIRECTOR_ROUTES.get(intent)
+    if handler_class:
+        handler = handler_class(session, message, api_key)
+        async for ev in handler.handle():
+            yield ev
+    else:
+        async for ev in LightChatHandler(session, message, api_key).handle():
+            yield ev

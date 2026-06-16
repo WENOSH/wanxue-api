@@ -1,34 +1,21 @@
-# WanXue API — 长期记忆
+# WanXue API 项目记忆
 
-## ✅ 已完成 (2026-06-16)
-- `prompts.py`: 新增 practice 卡片类型、_concept_log、_storage_analysis、Wisdom 诚实声明、GOAL_DIFFICULTY_STRATEGY
-- `engine.py`: inject goal_strategy into user prompt, add _concept_log/_storage_analysis defaults
-- `renderer.py`: add checkPractice() JS function, practice-input CSS, wisdom-statement CSS
-- `main.py`: TODO 注释已在 GenerateRequest
+## 工作目录
+本目录：`D:\ai agent\wanxue\wanxue-api\` — 主项目（含 git）
 
-## 待办：新增学习模式（mode）字段（2026-06-16 记录）
+## 最新改动（2026-06-16）
+- **renderer.py**: 翻页模式（一卡一页、左右滑动、自动切章）替代了长滚动
+- **config.py**: 所有难度每章卡片数改为 8
+- **prompts.py**: 新增 practice 卡片、_concept_log、_storage_analysis、GOAL_DIFFICULTY_STRATEGY、Wisdom 声明
+- **main.py**: bind-course 双重 role 参数 bug 修复
+- **SKILL.md**: v0.8（理解阶梯 Knowledge→Skills→Wisdom）
 
-### 背景
-受 PM Skills 文章的 Skill 2.0（Plugin = Skill + Command + Hook）概念启发，在 wanxue SKILL.md v0.7 中新增了 4 种学习模式，但 **wanxue-api 尚未实现**。
+## 待办
+- 学习模式（mode字段: 速览/精学/复习/对比）— TODO 注释在 main.py:83
+- Render 自动部署后验证 /api/auth/courses 等端点
 
-### 需要做的事
-在 `GenerateRequest` 中添加 `mode` 字段：
-```python
-mode: str = "精学"  # 速览 / 精学 / 复习 / 对比
-```
-
-各模式行为：
-| 模式 | 执行逻辑 | 改哪里 |
-|------|---------|-------|
-| 速览 | engine.py 只跑 Step 1-3，prompts.py 只生成知识地图+核心概念 | engine.py + prompts.py |
-| 精学 | 默认行为，无需改动 | - |
-| 复习 | 读已有 mastery-log，只出闪卡+Quiz，不走生成流水线 | engine.py 新分支 |
-| 对比 | topic 支持 "A vs B"，双主题并行生成后合成为对比卡片 | main.py（接口）+ engine.py |
-
-### 触发位置
-- `main.py:79` `class GenerateRequest` — TODO 注释已写在代码里
-- `engine.py` — 需要按 mode 分叉生成逻辑
-- `prompts.py` — 需要不同模式的提示词模板
-
-### 何时做
-建议下次迭代 `engine.py` 或 `prompts.py` 时顺手加上，不要单独为 mode 开一轮迭代。
+## 相关目录
+- `D:\ai agent\wanxue\wanxue-skill\` — SKILL.md 参考副本
+- `D:\ai agent\wanxue\tts-skill\` — TTS 朗读 skill
+- `D:\ai agent\wanxue\references\` — 早期版本存档
+- `~/.workbuddy/skills/wanxue\` — WorkBuddy 运行时来源（不可动）
