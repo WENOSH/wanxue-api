@@ -846,13 +846,16 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   display: none;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .auth-landing.show { display: flex; }
 .auth-landing .brand {
   text-align: center;
-  margin-bottom: 28px;
+  margin-top: 40px;
+  margin-bottom: 24px;
 }
 .auth-landing .brand-icon {
   font-size: 56px;
@@ -877,6 +880,7 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
   max-width: 360px;
   padding: 28px 24px 24px;
   box-shadow: 0 8px 32px rgba(45, 48, 71, 0.1);
+  margin-bottom: 40px;
 }
 .auth-landing .close-btn {
   position: absolute;
