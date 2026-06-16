@@ -42,11 +42,11 @@ MAX_CARDS_PER_CHAPTER = int(os.getenv("WANXUE_MAX_CARDS_PER_CHAPTER", "8"))
 # ── Difficulty Levels ────────────────────────────
 # 难度等级及其对应的章节数、每章卡片数
 DIFFICULTY_LEVELS = {
-    "1-入门":  {"chapters": 4, "cards": 5, "label": "入门轻松", "desc": "轻松趣味，适合零基础/小孩"},
-    "2-基础":  {"chapters": 5, "cards": 6, "label": "基础标准", "desc": "系统学习，适合初学者"},
-    "3-标准":  {"chapters": 6, "cards": 7, "label": "标准全面", "desc": "全面深入，适合有基础"},
-    "4-进阶":  {"chapters": 7, "cards": 7, "label": "进阶专业", "desc": "专业深度，适合深入研究"},
-    "5-挑战":  {"chapters": 8, "cards": 8, "label": "挑战高阶", "desc": "高难度，适合专家级"},
+    "1-入门":  {"chapters": 4, "cards": 8, "label": "入门轻松", "desc": "轻松趣味，适合零基础/小孩"},
+    "2-基础":  {"chapters": 5, "cards": 8, "label": "基础标准", "desc": "系统学习，适合初学者"},
+    "3-标准":  {"chapters": 6, "cards": 8, "label": "标准全面", "desc": "全面深入，适合有基础"},
+    "4-进阶":  {"chapters": 7, "cards": 9, "label": "进阶专业", "desc": "专业深度，适合深入研究"},
+    "5-挑战":  {"chapters": 8, "cards": 9, "label": "挑战高阶", "desc": "高难度，适合专家级"},
 }
 DEFAULT_DIFFICULTY = "3-标准"
 

@@ -8,26 +8,21 @@ except ImportError:
     from sync_injector import generate_sync_js
 
 
-# ===== 内联 CSS =====
+# ===== 内联 CSS（卡片翻页模式） =====
 _CSS = """
 :root {
   --bg: #fff8e7; --primary: #ff6b6b; --secondary: #4ecdc4;
   --accent: #ffe66d; --text: #2d3047; --text-soft: #6c6f7d;
-  --card-bg: #ffffff; --shadow: 0 4px 16px rgba(45, 48, 71, 0.08);
-  /* 字体大小变量（支持用户调整） */
+  --card-bg: #ffffff;
   --fs-body: 19px; --fs-card-title: 28px; --fs-card-h3: 22px;
   --fs-bar-title: 17px; --fs-tab: 13px;
 }
-/* 字体大小模式 */
 html[data-fs="sm"]  { --fs-body: 16px; --fs-card-title: 24px; --fs-card-h3: 19px; --fs-bar-title: 15px; --fs-tab: 12px; }
 html[data-fs="md"]  { --fs-body: 19px; --fs-card-title: 28px; --fs-card-h3: 22px; --fs-bar-title: 17px; --fs-tab: 13px; }
 html[data-fs="lg"]  { --fs-body: 22px; --fs-card-title: 32px; --fs-card-h3: 25px; --fs-bar-title: 19px; --fs-tab: 14px; }
 html[data-fs="xl"]  { --fs-body: 25px; --fs-card-title: 36px; --fs-card-h3: 28px; --fs-bar-title: 21px; --fs-tab: 15px; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  height: 100%;
-  -webkit-text-size-adjust: 100%;
-}
+html, body { height: 100%; -webkit-text-size-adjust: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   background: var(--bg); color: var(--text);
@@ -55,7 +50,6 @@ body {
   text-shadow: 0 1px 2px rgba(255,255,255,0.3);
   text-align: center; flex: 1; min-width: 0;
 }
-/* 字体大小切换按钮 */
 .fs-toggle {
   flex-shrink: 0; width: 32px; height: 32px; border: none;
   border-radius: 50%; background: rgba(255,255,255,0.7);
@@ -87,7 +81,7 @@ body {
   background: var(--primary); color: white;
   box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
 }
-/* 进度条 */
+/* 顶部总体进度条 */
 .progress-bar {
   position: fixed; top: 0; left: 0; right: 0; height: 3px;
   background: rgba(0,0,0,0.05); z-index: 99;
@@ -98,52 +92,28 @@ body {
   height: 3px; background: linear-gradient(90deg, #ff6b6b, #ffe66d);
   width: 0%; transition: width 0.4s;
 }
-/* 卡片区 — 长卡片滚动形式 */
+/* 卡片区 — 单卡翻页模式 */
 .card-area {
   position: fixed;
   top: 92px; bottom: 70px; left: 0; right: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: 20px;
+  overflow: hidden;  /* 关键：禁止滚动，固定卡片容器 */
 }
-.chapter-section {
-  /* 章节之间自动垂直排列 */
-}
-.chapter-section:not(:last-child) {
-  border-bottom: 2px solid rgba(255, 107, 107, 0.12);
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-}
-/* 章节分隔标题 */
-.chapter-divider {
-  padding: 16px 20px 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--primary);
-  background: linear-gradient(90deg, rgba(255,107,107,0.05), transparent);
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-.chapter-divider .ch-icon { margin-right: 6px; }
+/* 单卡片：独立一页，绝对定位叠放 */
 .card {
-  position: relative;
-  max-width: 720px;
-  margin: 8px auto;
-  width: 100%;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  margin: 0 auto;
+  width: 100%; max-width: 720px;
   padding: 20px 20px 24px;
-  background: var(--card-bg);
-  border-radius: 16px;
-  box-shadow: 0 1px 4px rgba(45,48,71,0.06);
-  opacity: 1;
-  transform: none;
-  transition: none;
+  overflow-y: auto;
+  opacity: 0; transform: translateX(40px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+.card.active {
+  opacity: 1; transform: translateX(0);
   pointer-events: auto;
 }
-/* 卡片标题 */
+/* 卡片内容样式 */
 .card h2 {
   color: var(--primary); font-size: var(--fs-card-title); margin-bottom: 18px;
   display: flex; align-items: center; gap: 8px;
@@ -204,7 +174,7 @@ body {
 .card .feedback.bad { background: #ffe0e0; color: #c14545; }
 .card .funfact {
   background: linear-gradient(135deg, #ffe66d 0%, #ff9a3c 100%);
-  color: var(--text); border-radius: 16px; padding: 18px; margin: 16px 0; font-size: 18px;
+  border-radius: 16px; padding: 18px; margin: 16px 0; font-size: 18px;
 }
 .card .funfact strong { color: var(--primary); }
 .card .scene-grid {
@@ -233,7 +203,6 @@ body {
   border-radius: 16px; padding: 20px; margin: 16px 0;
 }
 .card .challenge-box h3 { color: var(--primary); }
-/* 实践输入框 */
 .card .practice-input { margin: 12px 0; }
 .card .practice-input input[type="text"] {
   padding: 10px 14px; font-size: 18px; width: 200px;
@@ -241,23 +210,13 @@ body {
   font-family: inherit; text-align: center;
 }
 .card .practice-input input:focus { outline: none; border-color: var(--primary); }
-/* Wisdom 诚实声明 */
 .card .wisdom-statement {
   margin-top: 20px; padding: 16px;
   background: #f8f5f0; border-radius: 12px; border: 1px dashed #ddd;
   font-size: 14px; color: #6c6f7d; text-align: center;
   line-height: 1.7;
 }
-.card .progress-dots {
-  display: flex; justify-content: center; gap: 8px; margin: 16px 0;
-}
-.card .progress-dots .dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #ddd; transition: all 0.3s;
-}
-.card .progress-dots .dot.done { background: var(--primary); }
-.card .progress-dots .dot.current { background: var(--secondary); transform: scale(1.3); }
-/* 底栏 — 长卡片模式下为固定进度条和回到顶部 */
+/* 底栏 — 翻页导航 */
 .bottom-bar {
   position: fixed; bottom: 0; left: 0; right: 0; height: 70px;
   background: white; box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
@@ -272,23 +231,24 @@ body {
   font-weight: bold; cursor: pointer; font-family: inherit;
   box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
   -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
 }
 .bottom-bar .nav-btn:disabled {
   background: #ccc; cursor: not-allowed; box-shadow: none;
 }
-.bottom-bar .nav-btn.top-btn {
+.bottom-bar .nav-btn.chapter-btn {
   background: var(--secondary);
   box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
 }
 .bottom-bar .progress-text {
-  color: var(--text-soft); font-size: 14px; font-weight: 600;
+  color: var(--text-soft); font-size: 14px; font-weight: 600; text-align: center;
 }
 /* 移动端适配 */
 @media (max-width: 480px) {
   body { font-size: 18px; }
   .top-bar h1 { font-size: 17px; }
   .ch-tab { font-size: 13px; padding: 6px 12px; }
-  .card { padding: 14px 14px 20px; margin: 4px auto; }
+  .card { padding: 14px 14px 20px; }
   .card h2 { font-size: 24px; }
   .card p { font-size: 15px; }
   .card .scene-grid { grid-template-columns: 1fr; }
@@ -303,7 +263,7 @@ body {
   .bottom-bar .nav-btn { padding: 8px 12px; font-size: 13px; }
 }
 @media (min-width: 768px) {
-  .card { padding: 24px 28px 32px; margin: 12px auto; }
+  .card { padding: 24px 28px 32px; }
   .card h2 { font-size: 26px; }
 }
 /* === 3层验证 Modal === */
@@ -354,7 +314,7 @@ body {
 """
 
 
-# ===== 内联 JS（需注入课程配置变量） =====
+# ===== 内联 JS（卡片翻页模式） =====
 _JS_BASE = """
 // 进度存储/读取
 function loadProgress() {
@@ -372,7 +332,6 @@ function saveProgress() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       ch: currentCh, idx: currentIdx, time: Date.now()
     }));
-    // 派发自定义事件供同步器监听
     window.dispatchEvent(new CustomEvent('wanxue_page_change'));
   } catch(e) {}
 }
@@ -391,80 +350,92 @@ function totalPercent() {
   return totalCards > 0 ? Math.min(100, Math.round((completed / totalCards) * 100)) : 0;
 }
 
-// 更新界面
+// 更新界面 — 翻页模式
 function updateUI() {
   // Tab 高亮
   var tabs = document.querySelectorAll('.ch-tab');
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].classList.toggle('active', parseInt(tabs[i].dataset.ch) === currentCh);
   }
-  // 长卡片模式：所有卡片都可见，只切换章节显示
-  var sections = document.querySelectorAll('.chapter-section');
-  for (var j = 0; j < sections.length; j++) {
-    sections[j].style.display = parseInt(sections[j].dataset.ch) === currentCh ? 'block' : 'none';
-  }
-  // 所有卡片 active（长卡片不需要单卡激活）
-  var cards = document.querySelectorAll('.card');
-  for (var k = 0; k < cards.length; k++) {
-    cards[k].classList.add('active');
+  // 只激活当前卡片
+  var allCards = document.querySelectorAll('.card');
+  for (var c = 0; c < allCards.length; c++) {
+    var ch = parseInt(allCards[c].dataset.ch);
+    var idx = parseInt(allCards[c].dataset.idx);
+    allCards[c].classList.toggle('active', ch === currentCh && idx === currentIdx);
   }
   // 进度文字
   var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
-  document.getElementById('prog-text').textContent = '共 ' + total + ' 张卡片';
-  // 顶部进度条 — 使用章节进度（长卡片模式显示为章节占比）
-  var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-  var maxCh = Math.max.apply(null, chapterIds);
-  var overall = (currentCh / maxCh) * 100;
-  document.getElementById('progress').style.width = overall + '%';
-  // 章节标题更新
+  var cardNum = currentIdx + 1;
+  document.getElementById('prog-text').textContent = cardNum + ' / ' + total;
+  // 顶部进度条
+  document.getElementById('progress').style.width = totalPercent() + '%';
+  // 章节标题
   var activeTab = document.querySelector('.ch-tab.active');
   if (activeTab) {
-    var title = activeTab.textContent || '';
-    document.querySelector('.top-bar h1').textContent = title;
+    document.querySelector('.top-bar h1').textContent = activeTab.textContent || '';
   }
-  // 移除翻页按钮状态（长卡片不需要）
+  // 按钮状态
   var prevBtn = document.getElementById('btn-prev');
   var nextBtn = document.getElementById('btn-next');
-  if (prevBtn) prevBtn.style.display = 'none';
-  if (nextBtn) { nextBtn.textContent = '\u2191 回到顶部'; nextBtn.className = 'nav-btn top-btn'; }
+  var chapterKeys = _chapterKeys();
+  if (currentIdx === 0 && currentCh === chapterKeys[0]) {
+    prevBtn.disabled = true;
+  } else {
+    prevBtn.disabled = false;
+  }
+  if (currentIdx === total - 1 && currentCh === chapterKeys[chapterKeys.length - 1]) {
+    nextBtn.textContent = '\u2714\uFE0F 完成';
+    nextBtn.className = 'nav-btn chapter-btn';
+    nextBtn.disabled = false;
+  } else if (currentIdx === total - 1) {
+    nextBtn.textContent = '\u25B6 下一章';
+    nextBtn.className = 'nav-btn chapter-btn';
+    nextBtn.disabled = false;
+  } else {
+    nextBtn.textContent = '\u25B6';
+    nextBtn.className = 'nav-btn';
+    nextBtn.disabled = false;
+  }
 }
 
-// gotoCard：跳转到指定章节指定卡片
+// 跳转到指定卡片
 function gotoCard(ch, idx) {
-  // 长卡片模式：跳转到章节（跳转到该章节最顶部）
   if (!CHAPTER_DATA[ch]) return;
+  var oldCh = currentCh;
+  var oldIdx = currentIdx;
   currentCh = ch;
-  currentIdx = idx || 0;
+  currentIdx = idx;
   saveProgress();
   updateUI();
-  // 滚动到该章节
-  var section = document.querySelector('.chapter-section[data-ch="' + ch + '"]');
-  if (section) section.scrollIntoView({behavior: 'smooth', block: 'start'});
-  _checkVerification(ch, currentIdx);
+  _checkVerification(ch, idx);
 }
 
-// 翻页 — 长卡片模式下改为章节切换 / 回到顶部
-function goto(direction) {
-  if (direction > 0) {
-    // 下一章
-    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-    chapterIds.sort(function(a,b){return a-b;});
-    var idx = chapterIds.indexOf(currentCh);
-    if (idx >= 0 && idx < chapterIds.length - 1) {
-      gotoCard(chapterIds[idx + 1], 0);
+// 翻页：-1 = 上一张, 0 = 原地刷新, 1 = 下一张
+function goto(dir) {
+  var chapterKeys = _chapterKeys();
+  var ci = chapterKeys.indexOf(currentCh);
+  var total = CHAPTER_DATA[currentCh] ? CHAPTER_DATA[currentCh].total : 0;
+
+  if (dir > 0) {
+    // 下一张
+    if (currentIdx + 1 < total) {
+      gotoCard(currentCh, currentIdx + 1);
+    } else if (ci < chapterKeys.length - 1) {
+      // 切到下一章第一张
+      gotoCard(chapterKeys[ci + 1], 0);
     }
-  } else if (direction < 0) {
-    // 上一章
-    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-    chapterIds.sort(function(a,b){return a-b;});
-    var idx = chapterIds.indexOf(currentCh);
-    if (idx > 0) {
-      gotoCard(chapterIds[idx - 1], 0);
+    // 最后一张卡点击无反应（显示"完成"提示）
+  } else if (dir < 0) {
+    // 上一张
+    if (currentIdx > 0) {
+      gotoCard(currentCh, currentIdx - 1);
+    } else if (ci > 0) {
+      // 切到上一章最后一张
+      var prevCh = chapterKeys[ci - 1];
+      var prevTotal = CHAPTER_DATA[prevCh] ? CHAPTER_DATA[prevCh].total : 0;
+      gotoCard(prevCh, prevTotal - 1);
     }
-  } else {
-    // direction === 0: 回到顶部
-    var cardArea = document.querySelector('.card-area');
-    if (cardArea) cardArea.scrollTop = 0;
   }
 }
 
@@ -474,7 +445,6 @@ function switchChapter(ch) {
   gotoCard(ch, 0);
 }
 
-// quiz 互动
 // ===== TTS 朗读 =====
 function speakCard(btn) {
   if (window.speechSynthesis && window.speechSynthesis.speaking) {
@@ -484,19 +454,17 @@ function speakCard(btn) {
   }
   var card = btn.closest('.card');
   if (!card) return;
-  // 提取卡片文字内容（去掉按钮本身和嵌套按钮文本）
   var text = '';
   var children = card.childNodes;
   for (var i = 0; i < children.length; i++) {
-    if (children[i].nodeType === 3) { // text node
+    if (children[i].nodeType === 3) {
       text += children[i].textContent;
     } else if (children[i].tagName !== 'BUTTON' && children[i].className !== 'diff-feedback') {
       text += children[i].textContent || '';
     }
   }
-  text = text.trim().replace(/\s+/g, ' ');
+  text = text.trim().replace(/\\s+/g, ' ');
   if (!text) return;
-
   var utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-CN';
   utterance.rate = 0.95;
@@ -507,7 +475,7 @@ function speakCard(btn) {
   window.speechSynthesis.speak(utterance);
 }
 
-// ===== 互动练习（practice 卡片） =====
+// ===== 互动练习 =====
 function checkPractice(inputId, correctAnswer, goodMsg, badMsg) {
   var input = document.getElementById(inputId);
   var fb = document.getElementById('fb-' + inputId);
@@ -515,12 +483,11 @@ function checkPractice(inputId, correctAnswer, goodMsg, badMsg) {
   var answer = input.value.trim();
   if (answer === correctAnswer) {
     fb.className = 'feedback show good';
-    fb.innerHTML = '🎉 ' + (goodMsg || '完全正确！');
+    fb.innerHTML = '\U0001f389 ' + (goodMsg || '完全正确！');
     input.disabled = true;
   } else {
     fb.className = 'feedback show bad';
-    fb.innerHTML = '🤔 ' + (badMsg || '再想想～');
-    // 不清空输入，让用户可以再试
+    fb.innerHTML = '\U0001f914 ' + (badMsg || '再想想～');
   }
 }
 
@@ -528,22 +495,16 @@ function checkAnswer(btn, isCorrect, fbId) {
   var fb = document.getElementById(fbId);
   var box = btn.closest('.game-box');
   if (!fb || !box) return;
-
-  // 禁用所有按钮，防止重复点击（但保留查看）
   var btns = box.querySelectorAll('.answer-btn');
   for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
   btn.classList.add(isCorrect ? 'correct' : 'wrong');
-
-  // 显示当前选项的反馈
   if (isCorrect) {
     fb.className = 'feedback show good';
-    fb.innerHTML = '🎉 <strong>答对了！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
+    fb.innerHTML = '\U0001f389 <strong>答对了！</strong><br>' + (btn.getAttribute('data-good') || '回答正确！');
   } else {
     fb.className = 'feedback show bad';
-    fb.innerHTML = '🤔 ' + (btn.getAttribute('data-good') || '不对哦');
+    fb.innerHTML = '\U0001f914 ' + (btn.getAttribute('data-good') || '不对哦');
   }
-
-  // 显示所有选项的解释
   var explainDiv = box.querySelector('.explain-all');
   if (!explainDiv) {
     explainDiv = document.createElement('div');
@@ -551,27 +512,22 @@ function checkAnswer(btn, isCorrect, fbId) {
     explainDiv.style.cssText = 'margin-top:12px;padding:10px;background:#f8f5f0;border-radius:10px;font-size:13px;line-height:1.6;';
     box.appendChild(explainDiv);
   }
-  var explainHtml = '<div style="font-weight:600;margin-bottom:6px;color:#2d3047">📖 各选项解析：</div>';
+  var explainHtml = '<div style="font-weight:600;margin-bottom:6px;color:#2d3047">\U0001f4d6 各选项解析：</div>';
   for (var i = 0; i < btns.length; i++) {
-    var label = String.fromCharCode(65 + i); // A, B, C, D
+    var label = String.fromCharCode(65 + i);
     var explain = btns[i].getAttribute('data-explain') || '';
-    var mark = btns[i] === btn ? (isCorrect ? '✅' : '❌') : '';
+    var mark = btns[i] === btn ? (isCorrect ? '\u2705' : '\u274C') : '';
     var color = btns[i] === btn && isCorrect ? '#4ecdc4' : (btns[i] === btn ? '#ff6b6b' : '#2d3047');
     explainHtml += '<div style="margin:4px 0;color:' + color + '"><b>' + mark + ' ' + label + '.</b> '
       + btns[i].textContent.trim();
-    if (explain) explainHtml += ' <span style="color:#6c6f7d">— ' + explain + '</span>';
+    if (explain) explainHtml += ' <span style="color:#6c6f7d">\u2014 ' + explain + '</span>';
     explainHtml += '</div>';
   }
   explainDiv.innerHTML = explainHtml;
 }
 
-// 跳过当前测验（跳转到下一张卡片）
 function skipQuiz(btn) {
-  var box = btn ? btn.closest('.game-box') : null;
-  if (box) {
-    // 找到skip按钮所在的卡片，然后翻到下一张
-    goto(1);
-  }
+  goto(1);
 }
 
 // ===== 3层验证系统 =====
@@ -579,7 +535,6 @@ var _vL1Done = {};
 var _vL2Done = false;
 var _vL3Done = false;
 
-// 从 localStorage 恢复验证状态
 (function() {
   var v = localStorage.getItem(STORAGE_KEY + '_verify');
   if (v) {
@@ -612,13 +567,10 @@ function _maxChapter() {
   return keys.length > 0 ? keys[keys.length - 1] : 1;
 }
 
-// 检查是否应该触发验证
 function _checkVerification(ch, idx) {
   var verifyData = CHAPTER_DATA._verification;
   if (!verifyData) return;
-  if (document.querySelector('.verify-overlay.active')) return; // 已有 modal 打开
-
-  // L1: 每章第3张卡片（idx==2）
+  if (document.querySelector('.verify-overlay.active')) return;
   if (verifyData.L1 && !_vL1Done[ch]) {
     var item = null;
     for (var vi = 0; vi < verifyData.L1.length; vi++) {
@@ -629,8 +581,6 @@ function _checkVerification(ch, idx) {
       return;
     }
   }
-
-  // L2: 第3章最后一张卡片
   if (verifyData.L2 && !_vL2Done && ch === 3) {
     var chCards = CHAPTER_DATA[ch] ? CHAPTER_DATA[ch].total : 0;
     if (idx === chCards - 1) {
@@ -638,8 +588,6 @@ function _checkVerification(ch, idx) {
       return;
     }
   }
-
-  // L3: 最后一张卡片（全课程）
   if (verifyData.L3 && !_vL3Done) {
     var totalCh = _maxChapter();
     if (ch === totalCh) {
@@ -657,13 +605,13 @@ function _showL1Modal(ch, item) {
   var overlay = document.getElementById('verifyContainer');
   var keyword = item.keyword || '';
   var question = (item.question || '刚才提到的关键词，你能用自己的话说说它是什么意思吗？').replace('[关键词]', keyword);
-  overlay.innerHTML = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83D\uDCDD 关键概念反问</h3><p>' + question + '</p><textarea id="l1Input" placeholder="写下你的理解..."></textarea><div><button class="verify-btn primary" id="l1SubmitBtn">\u2714\uFE0F 确认</button></div><div id="l1Feedback" class="verify-feedback" style="display:none;"></div><button class="verify-btn secondary" id="l1ContinueBtn" style="display:none;">\u25B6\uFE0F 继续学习</button></div></div>';
+  overlay.innerHTML = '<div class="verify-overlay active"><div class="verify-modal"><h3>\U0001f4dd 关键概念反问</h3><p>' + question + '</p><textarea id="l1Input" placeholder="写下你的理解..."></textarea><div><button class="verify-btn primary" id="l1SubmitBtn">\u2714\uFE0F 确认</button></div><div id="l1Feedback" class="verify-feedback" style="display:none;"></div><button class="verify-btn secondary" id="l1ContinueBtn" style="display:none;">\u25B6\uFE0F 继续学习</button></div></div>';
   document.getElementById('l1SubmitBtn').onclick = function() {
     var input = document.getElementById('l1Input');
     var fb = document.getElementById('l1Feedback');
     fb.style.display = 'block';
     fb.className = 'verify-feedback correct';
-    fb.innerHTML = '\uD83D\uDC4D 说得很棒！你理解了"' + keyword + '"的核心意思。带着这个理解继续学习吧！';
+    fb.innerHTML = '\U0001f44D 说得很棒！你理解了"' + keyword + '"的核心意思。带着这个理解继续学习吧！';
     document.getElementById('l1SubmitBtn').disabled = true;
     input.disabled = true;
     document.getElementById('l1ContinueBtn').style.display = 'inline-block';
@@ -681,7 +629,7 @@ function _showL2Modal() {
   var verifyData = CHAPTER_DATA._verification;
   if (!verifyData || !verifyData.L2) return;
   var questions = verifyData.L2.questions || [];
-  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83D\uDCDD 章节小测</h3><p>做完这两道题，才能继续第4章哦！</p>';
+  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\U0001f4dd 章节小测</h3><p>做完这两道题，才能继续第4章哦！</p>';
   for (var qi = 0; qi < questions.length; qi++) {
     var q = questions[qi];
     html += '<div class="l2-question" data-qidx="' + qi + '"><p><strong>' + (qi + 1) + '. ' + q.q + '</strong></p>';
@@ -693,7 +641,6 @@ function _showL2Modal() {
   html += '<div id="l2Result" style="display:none;"></div></div></div>';
   var overlay = document.getElementById('verifyContainer');
   overlay.innerHTML = html;
-
   var correctCount = 0;
   var answered = {};
   var optionBtns = overlay.querySelectorAll('.verify-option');
@@ -717,21 +664,19 @@ function _showL2Modal() {
           fb.innerHTML = '\u274C 不对哦，正确答案是 ' + (String.fromCharCode(65 + questions[qi].answer)) + '。' + (questions[qi].explanation || '再想想～');
           btn.classList.add('wrong');
         }
-        // 标记该题所有选项
         var qBtns = overlay.querySelectorAll('.verify-option[data-q="' + qi + '"]');
         for (var xb = 0; xb < qBtns.length; xb++) {
           qBtns[xb].disabled = true;
           var xoi = parseInt(qBtns[xb].getAttribute('data-oi'));
           if (xoi === questions[qi].answer) qBtns[xb].classList.add('correct');
         }
-        // 检查是否全部答完
         var allDone = true;
         for (var cqi = 0; cqi < questions.length; cqi++) { if (!answered[cqi]) { allDone = false; break; } }
         if (allDone) {
           var resultDiv = document.getElementById('l2Result');
           resultDiv.style.display = 'block';
           if (correctCount === questions.length) {
-            resultDiv.innerHTML = '<div class="verify-feedback correct">\uD83C\uDF89 全部答对！太棒了！</div><button class="verify-btn primary" id="l2UnlockBtn">\u25B6\uFE0F 继续第4章</button>';
+            resultDiv.innerHTML = '<div class="verify-feedback correct">\U0001f389 全部答对！太棒了！</div><button class="verify-btn primary" id="l2UnlockBtn">\u25B6\uFE0F 继续第4章</button>';
             document.getElementById('l2UnlockBtn').onclick = function() {
               var ov = document.querySelector('.verify-overlay');
               if (ov) { ov.classList.remove('active'); ov.parentNode.removeChild(ov); }
@@ -739,7 +684,7 @@ function _showL2Modal() {
               _saveVerifyState();
             };
           } else {
-            resultDiv.innerHTML = '<div class="verify-feedback wrong">\uD83D\uDC4A 答对了 ' + correctCount + '/' + questions.length + '，再想想吧！</div><button class="verify-btn secondary" id="l2RetryBtn">\uD83D\uDD04 重试</button>';
+            resultDiv.innerHTML = '<div class="verify-feedback wrong">\U0001F44A 答对了 ' + correctCount + '/' + questions.length + '，再想想吧！</div><button class="verify-btn secondary" id="l2RetryBtn">\U0001F504 重试</button>';
             document.getElementById('l2RetryBtn').onclick = function() { _showL2Modal(); };
           }
         }
@@ -753,18 +698,17 @@ function _showL3Modal() {
   var verifyData = CHAPTER_DATA._verification;
   if (!verifyData || !verifyData.L3) return;
   var l3 = verifyData.L3;
-  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\uD83C\uDF1F 场景迁移</h3>';
+  var html = '<div class="verify-overlay active"><div class="verify-modal"><h3>\U0001f31f 场景迁移</h3>';
   html += '<p><strong>' + l3.scenario + '</strong></p>';
   html += '<p>' + l3.question + '</p>';
   for (var oi = 0; oi < l3.options.length; oi++) {
     html += '<button class="verify-option" data-oi="' + oi + '">' + (String.fromCharCode(65 + oi)) + '. ' + l3.options[oi] + '</button>';
   }
   html += '<div id="l3Feedback" class="verify-feedback" style="display:none;"></div>';
-  html += '<div id="l3Badge" style="display:none;" class="badge">\uD83C\uDFC6</div>';
-  html += '<button class="verify-btn secondary" id="l3RetryBtn" style="display:none;">\uD83D\uDD04 再想想</button></div></div>';
+  html += '<div id="l3Badge" style="display:none;" class="badge">\U0001f3c6</div>';
+  html += '<button class="verify-btn secondary" id="l3RetryBtn" style="display:none;">\U0001F504 再想想</button></div></div>';
   var overlay = document.getElementById('verifyContainer');
   overlay.innerHTML = html;
-
   var answered = false;
   var optionBtns = overlay.querySelectorAll('.verify-option');
   for (var bi = 0; bi < optionBtns.length; bi++) {
@@ -776,7 +720,6 @@ function _showL3Modal() {
         var isCorrect = oi === l3.answer;
         var fb = document.getElementById('l3Feedback');
         fb.style.display = 'block';
-        // 禁用所有
         var allBtns = overlay.querySelectorAll('.verify-option');
         for (var ab = 0; ab < allBtns.length; ab++) {
           allBtns[ab].disabled = true;
@@ -788,9 +731,8 @@ function _showL3Modal() {
           fb.className = 'verify-feedback correct';
           fb.innerHTML = '\u2705 完全正确！' + (l3.explanation || '');
           document.getElementById('l3Badge').style.display = 'block';
-          var badgeHtml = '<div style="text-align:center;margin-top:8px;"><div class="badge">\uD83C\uDFC6</div><p style="font-size:14px;color:#2d3047;"><strong>\uD83C\uDF89 恭喜完成课程！</strong><br>你已获得课程完成徽章！</p></div>';
+          var badgeHtml = '<div style="text-align:center;margin-top:8px;"><div class="badge">\U0001f3c6</div><p style="font-size:14px;color:#2d3047;"><strong>\U0001f389 恭喜完成课程！</strong><br>你已获得课程完成徽章！</p></div>';
           fb.innerHTML += badgeHtml;
-          // 关闭按钮
           fb.innerHTML += '<br><button class="verify-btn primary" id="l3FinishBtn">\u2714\uFE0F 完成</button>';
           document.getElementById('l3FinishBtn').onclick = function() {
             var ov = document.querySelector('.verify-overlay');
@@ -802,7 +744,6 @@ function _showL3Modal() {
           btn.classList.add('wrong');
           fb.className = 'verify-feedback wrong';
           fb.innerHTML = '\u274C 不对哦。' + (l3.explanation || '再想想～');
-          // 显示重试按钮
           document.getElementById('l3RetryBtn').style.display = 'inline-block';
           document.getElementById('l3RetryBtn').onclick = function() {
             for (var cb = 0; cb < allBtns.length; cb++) {
@@ -821,35 +762,12 @@ function _showL3Modal() {
 
 // 事件绑定
 document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('btn-next').onclick = function() {
-    var btn = document.getElementById('btn-next');
-    if (btn.textContent.indexOf('回到顶部') >= 0) {
-      goto(0);  // 滚动到顶部
-      return;
-    }
-    goto(1);  // 下一章
-  };
-  // 在章节切换后更新按钮文字
-  var _origUpdate = updateUI;
-  updateUI = function() {
-    _origUpdate();
-    // 如果是最后一章，按钮改为"回到顶部"
-    var chapterIds = Object.keys(CHAPTER_DATA).filter(function(k) { return !isNaN(k); }).map(Number);
-    var maxCh = Math.max.apply(null, chapterIds);
-    var btn = document.getElementById('btn-next');
-    if (currentCh >= maxCh) {
-      btn.textContent = '\u2191 回到顶部';
-      btn.className = 'nav-btn top-btn';
-    } else {
-      btn.textContent = '下一章 \u2192';
-      btn.className = 'nav-btn';
-    }
-  };
+  document.getElementById('btn-prev').onclick = function() { goto(-1); };
+  document.getElementById('btn-next').onclick = function() { goto(1); };
   var tabs = document.querySelectorAll('.ch-tab');
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].onclick = function() { switchChapter(parseInt(this.dataset.ch)); };
   }
-  // 首次渲染（在覆盖之后，确保按钮文字正确）
   updateUI();
 });
 
@@ -877,80 +795,76 @@ document.addEventListener('keydown', function(e) {
   }
 })();
 
-// 触摸滑动
+// 触摸滑动翻卡
 (function() {
   var touchStartX = 0, touchStartY = 0;
-  var cardArea = document.querySelector('.card-area');
-  if (cardArea) {
-    cardArea.addEventListener('touchstart', function(e) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-    }, {passive: true});
-    cardArea.addEventListener('touchend', function(e) {
-      var dx = e.changedTouches[0].clientX - touchStartX;
-      var dy = e.changedTouches[0].clientY - touchStartY;
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-        goto(dx < 0 ? 1 : -1);
-      }
-    }, {passive: true});
-  }
+  document.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, {passive: true});
+  document.addEventListener('touchend', function(e) {
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    var dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      goto(dx < 0 ? 1 : -1);
+    }
+  }, {passive: true});
 })();
 
-// ===== 难度反馈按钮处理 =====
+// ===== 难度反馈 =====
 (function() {
   var container = document.getElementById('diffFeedback');
   if (!container) return;
   container.addEventListener('click', function(e) {
     var btn = e.target.closest('.diff-fb-btn');
     if (!btn) return;
-    // 禁用所有按钮
     var allBtns = container.querySelectorAll('.diff-fb-btn');
     for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
-    // 显示感谢信息
     var result = container.querySelector('.diff-fb-result');
     if (result) result.style.display = 'block';
-    // 通过 postMessage 通知父页面（app.html）
     var fbValue = btn.getAttribute('data-fb');
     try {
       window.parent.postMessage({
         type: 'wanxue_difficulty_feedback',
         value: fbValue === 'too_easy' ? '太简单了' : (fbValue === 'too_hard' ? '太难了' : '难度正好')
       }, '*');
-    } catch(e) {
-      // 如果不在 iframe 中（直接查看课程），忽略
-    }
+    } catch(e) {}
   });
 })();
 
 // 启动
 loadProgress();
 
-// 为所有 quiz 添加跳过按钮
+// 为所有 quiz 游戏框加跳过按钮
 (function() {
   var boxes = document.querySelectorAll('.game-box');
   for (var i = 0; i < boxes.length; i++) {
-    // 检查是否已有跳过按钮
     if (boxes[i].querySelector('.skip-quiz-btn')) continue;
     var skip = document.createElement('div');
     skip.style.cssText = 'text-align:right;margin-top:6px';
-    skip.innerHTML = '<button class="skip-quiz-btn" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 ↓</button>';
+    skip.innerHTML = '<button class="skip-quiz-btn" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#999;cursor:pointer;font-size:12px;font-family:inherit">跳过此题 \u2192</button>';
     boxes[i].appendChild(skip);
-    skip.querySelector('.skip-quiz-btn').onclick = function() {
-      // 在长卡片模式下，滚动到当前卡片下面
-      var card = this.closest('.card');
-      if (card) {
-        var next = card.nextElementSibling;
-        while (next && !next.classList.contains('card')) next = next.nextElementSibling;
-        if (next) next.scrollIntoView({behavior:'smooth', block:'start'});
+    skip.querySelector('.skip-quiz-btn').onclick = function() { goto(1); };
+  }
+})();
+
+// 卡片切换动画：底栏显示章节切换时加确认提示
+(function() {
+  var nextBtn = document.getElementById('btn-next');
+  if (nextBtn) {
+    nextBtn.addEventListener('click', function() {
+      var txt = nextBtn.textContent;
+      if (txt.indexOf('下一章') >= 0 || txt.indexOf('完成') >= 0) {
+        // 用户在翻卡到章节末尾时自动切换，无需额外操作
       }
-    };
+    });
   }
 })();
 """
 
 
 def render_html(course_data: dict) -> str:
-    """将课程 JSON 渲染为单文件卡片化 HTML
+    """将课程 JSON 渲染为单文件卡片化 HTML（翻页模式）
 
     Args:
         course_data: 来自 engine.py 的课程数据字典
@@ -1014,9 +928,9 @@ def render_html(course_data: dict) -> str:
 <div id="verifyContainer"></div>
 
 <div class="bottom-bar">
-  <button class="nav-btn" id="btn-prev" style="display:none">&larr; 上一章</button>
-  <span class="progress-text" id="prog-text">共 0 张卡片</span>
-  <button class="nav-btn" id="btn-next">下一章 &rarr;</button>
+  <button class="nav-btn" id="btn-prev">&larr; 上一张</button>
+  <span class="progress-text" id="prog-text">1 / 1</span>
+  <button class="nav-btn" id="btn-next">下一张 &rarr;</button>
 </div>
 
 <script>
@@ -1051,23 +965,22 @@ def _build_chapter_tabs(chapters: list) -> str:
 
 
 def _build_cards_html(chapters: list) -> str:
-    """构建所有章节和卡片的 HTML"""
-    sections = []
+    """构建所有卡片的 HTML（平面结构，每张卡片独立一页）"""
+    all_cards = []
     global_card_id = 0
 
     for ch_idx, ch in enumerate(chapters):
         ch_id = ch.get("id", 1)
-        is_first_chapter = ch_id == 1
         is_last_chapter = ch_idx == len(chapters) - 1
-        display_style = "" if is_first_chapter else ' style="display:none;"'
-
-        cards_html = []
         cards = ch.get("cards", [])
+
         for card_idx, card in enumerate(cards):
-            is_active = card_idx == 0
-            active_cls = "active" if is_active else ""
             card_body = card.get("body", "<p>内容待补充</p>")
             card_type = card.get("type", "concept")
+
+            # 第一张卡片默认 active
+            is_active = (ch_idx == 0 and card_idx == 0)
+            active_cls = "active" if is_active else ""
 
             # 最后一章的 reward 卡片 → 添加难度反馈
             is_last_reward = is_last_chapter and card_type == "reward" and card_idx == len(cards) - 1
@@ -1075,43 +988,27 @@ def _build_cards_html(chapters: list) -> str:
             if is_last_reward:
                 diff_feedback_html = """
   <div class="diff-feedback" id="diffFeedback" style="margin-top:20px;padding:16px;background:linear-gradient(135deg,#fff8e7 0%,#ffe9b3 100%);border-radius:14px;border:1px solid #ffe66d;text-align:center;">
-    <div style="font-size:14px;font-weight:700;color:#2d3047;margin-bottom:10px">📊 这个课程的难度怎么样？</div>
+    <div style="font-size:14px;font-weight:700;color:#2d3047;margin-bottom:10px">\U0001f4ca 这个课程的难度怎么样？</div>
     <div style="font-size:12px;color:#6c6f7d;margin-bottom:12px">你的反馈会帮我以后自动匹配合适的难度</div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-      <button class="diff-fb-btn" data-fb="too_easy" style="padding:10px 20px;border:1.5px solid #ff6b6b;border-radius:10px;background:#fff;color:#ff6b6b;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">😅 太简单</button>
-      <button class="diff-fb-btn" data-fb="just_right" style="padding:10px 20px;border:1.5px solid #4ecdc4;border-radius:10px;background:#fff;color:#4ecdc4;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">👍 正好</button>
-      <button class="diff-fb-btn" data-fb="too_hard" style="padding:10px 20px;border:1.5px solid #9b59b6;border-radius:10px;background:#fff;color:#9b59b6;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">😰 太难了</button>
+      <button class="diff-fb-btn" data-fb="too_easy" style="padding:10px 20px;border:1.5px solid #ff6b6b;border-radius:10px;background:#fff;color:#ff6b6b;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">\U0001f605 太简单</button>
+      <button class="diff-fb-btn" data-fb="just_right" style="padding:10px 20px;border:1.5px solid #4ecdc4;border-radius:10px;background:#fff;color:#4ecdc4;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">\U0001f44d 正好</button>
+      <button class="diff-fb-btn" data-fb="too_hard" style="padding:10px 20px;border:1.5px solid #9b59b6;border-radius:10px;background:#fff;color:#9b59b6;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">\U0001f630 太难了</button>
     </div>
-    <div class="diff-fb-result" style="margin-top:10px;font-size:13px;color:#2d3047;display:none">已记录你的难度偏好，谢谢反馈！🎉</div>
-  </div>
-"""
+    <div class="diff-fb-result" style="margin-top:10px;font-size:13px;color:#2d3047;display:none">已记录你的难度偏好，谢谢反馈！\U0001f389</div>
+  </div>"""
 
-            cards_html.append(
+            all_cards.append(
                 f'  <div class="card {active_cls}" id="c{global_card_id}" '
                 f'data-ch="{ch_id}" data-idx="{card_idx}" data-type="{card_type}">\n'
-                f'<button class="tts-btn" onclick="speakCard(this)" title="朗读本卡">🔊</button>\n'
+                f'<button class="tts-btn" onclick="speakCard(this)" title="朗读本卡">\U0001f50a</button>\n'
                 f'{card_body}\n'
                 f'{diff_feedback_html}\n'
                 f'  </div>'
             )
             global_card_id += 1
 
-        ch_title = ch.get("title", f"第{ch_id}章")
-        ch_emoji = ch.get("emoji", "📖")
-        chapter_divider = (
-            f'<div class="chapter-divider" id="divider-{ch_id}">'
-            f'<span class="ch-icon">{ch_emoji}</span>{_html.escape(ch_title)}'
-            f'</div>\n'
-        )
-        section = (
-            f'<section class="chapter-section" data-ch="{ch_id}"{display_style}>\n'
-            + chapter_divider
-            + "\n".join(cards_html)
-            + "\n</section>"
-        )
-        sections.append(section)
-
-    return "\n".join(sections)
+    return "\n".join(all_cards)
 
 
 def _build_chapter_data_js(chapters: list, verification_json: str = "{}") -> str:
