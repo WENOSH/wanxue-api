@@ -566,9 +566,49 @@ class BaseHandler:
 
 
 class CourseGeneratorHandler(BaseHandler):
-    """课程生成 Handler — 生成完整课程 + 嵌入式验证"""
+    """课程生成 Handler — 先了解需求再生成课程"""
     async def handle(self):
         topic = extract_topic(self.message)
+        
+        # 检查是否已收集足够的用户偏好
+        has_goal = self.session.user_profile.get("goal") and self.session.user_profile.get("goal") != "入门科普"
+        has_difficulty = self.session.user_profile.get("difficulty") and self.session.user_profile.get("difficulty") != "3-标准"
+        has_mode = self.session.user_profile.get("mode") and self.session.user_profile.get("mode") != "精学"
+        
+        # 如果用户还没说明目标/难度，先问清楚再生成
+        if not (has_goal and has_difficulty and has_mode) and not self._has_preference_hints():
+            yield {"event": "guide", "data": f"好的，我来帮你学好「{topic}」！先告诉我几件事：\n\n"
+                f"1️⃣ 你想怎么学？\n"
+                f"   • 速览了解 — 快速了解全貌\n"
+                f"   • 系统精学 — 扎扎实实学透\n"
+                f"   • 复习巩固 — 已经学过，想巩固\n"
+                f"   • 对比学习 — 想对比两个概念\n\n"
+                f"2️⃣ 你的学习目标是什么？\n"
+                f"   • 入门科普 — 零基础了解\n"
+                f"   • 考试准备 — 应对考试\n"
+                f"   • 项目应用 — 为了实际用\n"
+                f"   • 深入研究 — 搞懂本质\n\n"
+                f"3️⃣ 你现在的水平？\n"
+                f"   • 1-入门 / 2-基础 / 3-标准 / 4-进阶 / 5-挑战\n\n"
+                f"直接回复我你的选择，比如「系统精学、入门科普、基础」"}
+            # 保存待确认的 topic 到 session
+            self.session.user_profile["_pending_topic"] = topic
+            self.session.user_profile["_awaiting_prefs"] = True
+            return
+        
+        # 已有足够偏好，直接生成
+        await self._do_generate(topic)
+    
+    def _has_preference_hints(self):
+        """检查用户输入中是否包含了学习偏好"""
+        msg_lower = self.message.lower()
+        has_mode_hint = any(kw in msg_lower for kw in ["速览", "快速", "精学", "深入", "复习", "巩固", "对比", "比较"])
+        has_goal_hint = any(kw in msg_lower for kw in ["入门", "科普", "考试", "项目", "应用", "深入", "研究"])
+        has_diff_hint = any(kw in msg_lower for kw in ["入门", "基础", "标准", "进阶", "挑战", "零基础", "没基础"])
+        return has_mode_hint or has_goal_hint or has_diff_hint
+    
+    async def _do_generate(self, topic):
+        """执行课程生成"""
         from wanxue_api.config import get_difficulty_config
         diff_key = self.session.user_profile.get("difficulty", self.session.user_profile.get("difficulty_level", "3-标准"))
         diff_cfg = get_difficulty_config(diff_key)
@@ -990,6 +1030,66 @@ class LightChatHandler(BaseHandler):
 
 
 # 路由表：intent → Handler 类
+class PreferenceHandler(BaseHandler):
+    """偏好收集 Handler — 解析用户对课程难度/目标/模式的选择"""
+    async def handle(self):
+        topic = self.session.user_profile.get("_pending_topic", "")
+        msg = self.message
+        
+        # 解析模式
+        mode = "精学"
+        if any(kw in msg for kw in ["速览", "快速", "扫一眼", "大概"]):
+            mode = "速览"
+        elif any(kw in msg for kw in ["精学", "深入", "系统", "详细", "好好学"]):
+            mode = "精学"
+        elif any(kw in msg for kw in ["复习", "巩固", "回顾"]):
+            mode = "复习"
+        elif any(kw in msg for kw in ["对比", "比较", "vs"]):
+            mode = "对比"
+        
+        # 解析目标
+        goal = "入门科普"
+        if any(kw in msg for kw in ["入门", "科普", "零基础", "了解"]):
+            goal = "入门科普"
+        elif any(kw in msg for kw in ["考试", "备考", "应试"]):
+            goal = "考试准备"
+        elif any(kw in msg for kw in ["项目", "应用", "实践", "实用"]):
+            goal = "项目应用"
+        elif any(kw in msg for kw in ["深入", "研究", "搞懂", "透彻"]):
+            goal = "深入研究"
+        
+        # 解析难度
+        diff = "3-标准"
+        if any(kw in msg for kw in ["1-入门", "入门", "零基础", "完全没"]):
+            diff = "1-入门"
+        elif any(kw in msg for kw in ["2-基础", "基础", "有点"]):
+            diff = "2-基础"
+        elif any(kw in msg for kw in ["3-标准", "标准", "中等"]):
+            diff = "3-标准"
+        elif any(kw in msg for kw in ["4-进阶", "进阶", "不错", "较好"]):
+            diff = "4-进阶"
+        elif any(kw in msg for kw in ["5-挑战", "挑战", "专家", "精通"]):
+            diff = "5-挑战"
+        
+        # 保存偏好
+        self.session.user_profile["mode"] = mode
+        self.session.user_profile["goal"] = goal
+        self.session.user_profile["difficulty"] = diff
+        
+        yield {"event": "guide", "data": f"好的！来学「{topic}」\n"
+            f"📖 学习模式：{mode}\n"
+            f"🎯 学习目标：{goal}\n"
+            f"📊 难度等级：{diff}\n\n"
+            f"现在开始生成课程，请稍候..."}
+        
+        # 调用课程生成
+        handler = CourseGeneratorHandler(self.session, self.message, self.api_key)
+        handler.session.user_profile["_pending_topic"] = topic
+        handler.session.user_profile["_awaiting_prefs"] = False
+        async for ev in handler._do_generate(topic):
+            yield ev
+
+
 DIRECTOR_ROUTES = {
     "generate": CourseGeneratorHandler,
     "simplify": ReExplainerHandler,
@@ -1009,6 +1109,14 @@ DIRECTOR_ROUTES = {
 
 async def director_route(intent: str, session, message: str, api_key: str):
     """Director 路由入口 — 根据意图分派到对应 Handler"""
+    # 检测是否在等待用户偏好输入（课程生成前的引导对话）
+    if session.user_profile.get("_awaiting_prefs"):
+        session.user_profile["_awaiting_prefs"] = False
+        handler = PreferenceHandler(session, message, api_key)
+        async for ev in handler.handle():
+            yield ev
+        return
+    
     handler_class = DIRECTOR_ROUTES.get(intent)
     if handler_class:
         handler = handler_class(session, message, api_key)
