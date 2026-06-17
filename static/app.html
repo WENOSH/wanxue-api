@@ -2172,8 +2172,11 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
       let lastEvent = '';
       let lastBubble = thinkingBubble;  // 复用一个 bubble 持续更新
       let firstRealEvent = false;
+      let streamDone = false;
+      let breakLoops = false;
 
       while (true) {
+        if (streamDone || breakLoops) break;
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -2341,7 +2344,9 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
               thinkingBubble.textContent = eMsg;
               setStatus('出错');
             } else if (lastEvent === 'done') {
-              // 结束
+              // 收到 done 事件，结束 SSE 读取（防止 Keep-Alive 连接永不关闭）
+              streamDone = true;
+              breakLoops = true;
             }
             scrollToBottom();
           }
