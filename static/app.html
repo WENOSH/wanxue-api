@@ -2150,9 +2150,12 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     thinkingBubble.innerHTML = '<span class="thinking-dots"></span> 正在思考';
     setStatus('正在思考...');
 
-      // 2. 发送请求并获取完整响应（避免 ReadableStream 兼容性问题）
+      // 2. 启动 SSE 流式读取
       try {
         const diffFromStorage = localStorage.getItem('wanxue_difficulty') || '3-标准';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3分钟超时
+        
         const resp = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2160,115 +2163,156 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
             message: text,
             session_id: state.sessionId,
             difficulty: diffFromStorage
-          })
+          }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+        
         if (!resp.ok) {
           const t = await resp.text();
           throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 100));
         }
-        // 一次性获取全部 SSE 文本（避免流式读取的兼容性问题）
-        const fullText = await resp.text();
-        const lines = fullText.split('\n');
+        
+        // 使用 ReadableStream 逐行读取 SSE，避免代理缓冲导致 resp.text() 永远不返回
         let lastEvent = '';
         let hasRealContent = false;
         let guideCount = 0;
         
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          if (trimmed.startsWith('event:')) {
-            lastEvent = trimmed.slice(6).trim();
-          } else if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim();
-            let data;
-            try { data = JSON.parse(dataStr); } catch { data = dataStr; }
+        if (resp.body) {
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let streamDone = false;
+          
+          while (true) {
+            if (streamDone) break;
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
             
-            if (data && data.progress) updateProgressBar(data.progress);
-            
-            if (lastEvent === 'meta' && data && data.session_id) {
-              state.sessionId = data.session_id;
-              saveState();
-            } else if (lastEvent === 'guide') {
-              guideCount++;
-              const guideText = (typeof data === 'string') ? data :
-                (data && data.guide_message) || '';
-              if (!guideText) continue;
-              if (!hasRealContent) {
-                hasRealContent = true;
-                thinkingBubble.classList.remove('thinking');
-                thinkingBubble.textContent = guideText;
-                attachTTSButton(thinkingBubble);
-                if (tts.enabled) tts.speak(guideText, thinkingBubble);
-              } else {
-                const newBubble = addMessage('ai', guideText);
-                attachTTSButton(newBubble);
-                if (tts.enabled) tts.speak(guideText, newBubble);
+            for (const line of lines) {
+              if (!line) continue;
+              if (line.startsWith('event:')) {
+                lastEvent = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                const dataStr = line.slice(5).trim();
+                let data;
+                try { data = JSON.parse(dataStr); } catch { data = dataStr; }
+                
+                if (data && data.progress) updateProgressBar(data.progress);
+                
+                if (lastEvent === 'meta' && data && data.session_id) {
+                  state.sessionId = data.session_id;
+                  saveState();
+                } else if (lastEvent === 'guide') {
+                  guideCount++;
+                  const guideText = (typeof data === 'string') ? data :
+                    (data && data.guide_message) || '';
+                  if (!guideText) continue;
+                  if (!hasRealContent) {
+                    hasRealContent = true;
+                    thinkingBubble.classList.remove('thinking');
+                    thinkingBubble.textContent = guideText;
+                    attachTTSButton(thinkingBubble);
+                    if (tts.enabled) tts.speak(guideText, thinkingBubble);
+                  } else {
+                    const newBubble = addMessage('ai', guideText);
+                    attachTTSButton(newBubble);
+                    if (tts.enabled) tts.speak(guideText, newBubble);
+                  }
+                  scrollToBottom();
+                  setStatus(guideCount === 1 ? '正在生成...' : '等待你回答...');
+                } else if (lastEvent === 'thinking') {
+                  const thinkText = (typeof data === 'string') ? data :
+                    (data && data.text) || '正在思考...';
+                  if (!hasRealContent) {
+                    hasRealContent = true;
+                    thinkingBubble.classList.remove('thinking');
+                  }
+                  thinkingBubble.textContent = thinkText;
+                  attachTTSButton(thinkingBubble);
+                  if (tts.enabled) tts.speak(thinkText, thinkingBubble);
+                  scrollToBottom();
+                  setStatus('生成中...');
+                } else if (lastEvent === 'course_done') {
+                  hasRealContent = true;
+                  thinkingBubble.classList.remove('thinking');
+                  const cMsg = (data && data.message) || '课程已生成！';
+                  thinkingBubble.textContent = cMsg;
+                  attachTTSButton(thinkingBubble);
+                  if (tts.enabled) tts.speak(cMsg, thinkingBubble);
+                  if (data && data.course) {
+                    state.currentCourse = data.course;
+                    thinkingBubble.appendChild(renderCoursePreview(data.course));
+                    saveCurrentCourseToProfile(data.course);
+                    setTimeout(function() {
+                      syncLearningRecord({
+                        cards: { done: data.course._total_cards || 0, total: data.course._total_cards || 0 }
+                      });
+                    }, 100);
+                  }
+                  setStatus('已生成');
+                  scrollToBottom();
+                } else if (lastEvent === 'card_done') {
+                  hasRealContent = true;
+                  thinkingBubble.classList.remove('thinking');
+                  const card = data && data.card || {};
+                  const newBubble = addMessage('ai', card.title || '补卡');
+                  newBubble.innerHTML = '<strong>' + escapeHtml(card.title || '补卡') + '</strong><div style="font-size:13px;margin-top:6px">' + (card.body || '') + '</div>';
+                  attachTTSButton(newBubble);
+                  if (tts.enabled) tts.speak((card.title || '补卡') + '。' + (card.body || ''), newBubble);
+                  scrollToBottom();
+                } else if (lastEvent === 'quiz_done') {
+                  hasRealContent = true;
+                  thinkingBubble.classList.remove('thinking');
+                  const qMsg = '为你生成 ' + ((data && data.count) || 0) + ' 道测验题：';
+                  thinkingBubble.textContent = qMsg;
+                  if (data && data.questions && data.questions.length) {
+                    thinkingBubble.appendChild(renderQuiz(data.questions));
+                  }
+                  setStatus('测验已生成');
+                  scrollToBottom();
+                } else if (lastEvent === 'error') {
+                  hasRealContent = true;
+                  thinkingBubble.classList.remove('thinking');
+                  thinkingBubble.textContent = '⚠️ ' + ((data && data.message) || data || '出错了');
+                  setStatus('出错');
+                  scrollToBottom();
+                } else if (lastEvent === 'done') {
+                  streamDone = true;
+                  break;
+                }
               }
-              scrollToBottom();
-              setStatus(guideCount === 1 ? '正在生成...' : '等待你回答...');
-            } else if (lastEvent === 'thinking') {
-              const thinkText = (typeof data === 'string') ? data :
-                (data && data.text) || '正在思考...';
-              if (!hasRealContent) {
-                hasRealContent = true;
-                thinkingBubble.classList.remove('thinking');
-              }
-              thinkingBubble.textContent = thinkText;
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(thinkText, thinkingBubble);
-              scrollToBottom();
-              setStatus('生成中...');
-            } else if (lastEvent === 'course_done') {
-              hasRealContent = true;
-              thinkingBubble.classList.remove('thinking');
-              const cMsg = (data && data.message) || '课程已生成！';
-              thinkingBubble.textContent = cMsg;
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(cMsg, thinkingBubble);
-              if (data && data.course) {
-                state.currentCourse = data.course;
-                thinkingBubble.appendChild(renderCoursePreview(data.course));
-                saveCurrentCourseToProfile(data.course);
-                setTimeout(function() {
-                  syncLearningRecord({
-                    cards: { done: data.course._total_cards || 0, total: data.course._total_cards || 0 }
-                  });
-                }, 100);
-              }
-              setStatus('已生成');
-              scrollToBottom();
-            } else if (lastEvent === 'card_done') {
-              hasRealContent = true;
-              thinkingBubble.classList.remove('thinking');
-              const card = data && data.card || {};
-              const newBubble = addMessage('ai', card.title || '补卡');
-              newBubble.innerHTML = '<strong>' + escapeHtml(card.title || '补卡') + '</strong><div style="font-size:13px;margin-top:6px">' + (card.body || '') + '</div>';
-              attachTTSButton(newBubble);
-              if (tts.enabled) tts.speak((card.title || '补卡') + '。' + (card.body || ''), newBubble);
-              scrollToBottom();
-            } else if (lastEvent === 'quiz_done') {
-              // ... quiz rendering
-              hasRealContent = true;
-              thinkingBubble.classList.remove('thinking');
-              const qMsg = '为你生成 ' + ((data && data.count) || 0) + ' 道测验题：';
-              thinkingBubble.textContent = qMsg;
-              if (data && data.questions && data.questions.length) {
-                thinkingBubble.appendChild(renderQuiz(data.questions));
-              }
-              setStatus('测验已生成');
-              scrollToBottom();
-            } else if (lastEvent === 'error') {
-              hasRealContent = true;
-              thinkingBubble.classList.remove('thinking');
-              thinkingBubble.textContent = '⚠️ ' + ((data && data.message) || data || '出错了');
-              setStatus('出错');
-              scrollToBottom();
-            } else if (lastEvent === 'done') {
-              // 结束
-              break;
             }
-            // scrollToBottom is called inside each handler above
           }
+        } else {
+          // 浏览器不支持 ReadableStream，降级为一次性获取
+          const fullText = await resp.text();
+          const lines2 = fullText.split('\n');
+          let lastEv = '';
+          for (const ln of lines2) {
+            const t = ln.trim();
+            if (!t) continue;
+            if (t.startsWith('event:')) lastEv = t.slice(6).trim();
+            else if (t.startsWith('data:')) {
+              // 简化处理：只显示第一条 guide 消息
+              if (lastEv === 'guide' && !hasRealContent) {
+                hasRealContent = true;
+                thinkingBubble.classList.remove('thinking');
+                try {
+                  const d = JSON.parse(t.slice(5).trim());
+                  thinkingBubble.textContent = d.guide_message || (typeof d === 'string' ? d : '好的...');
+                } catch(e) {
+                  thinkingBubble.textContent = t.slice(5).trim();
+                }
+                attachTTSButton(thinkingBubble);
+                scrollToBottom();
+              }
+            }
+          }
+          setStatus('就绪');
         }
         setStatus('就绪');
     } catch (e) {

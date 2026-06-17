@@ -666,7 +666,7 @@ async def chat_message(req: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
+            "Connection": "close",
         },
     )
 
