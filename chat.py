@@ -637,7 +637,28 @@ class CourseGeneratorHandler(BaseHandler):
                 mode = "对比"
             self.session.user_profile["mode"] = mode
             self.session.user_profile["goal"] = goal
-            course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
+            
+            # 异步生成课程 + 保持 SSE 连接（防止 Render proxy 60s 空闲超时）
+            course = None
+            _gen_error = None
+            
+            async def _run_generation():
+                nonlocal course, _gen_error
+                try:
+                    course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
+                except Exception as e:
+                    _gen_error = e
+            
+            _gen_task = asyncio.create_task(_run_generation())
+            while not _gen_task.done():
+                _done_set, _ = await asyncio.wait([_gen_task], timeout=15.0)
+                if not _gen_task.done():
+                    yield {"event": "thinking", "data": "⏳ 课程正在生成中，请稍候（大模型需要一点时间思考）..."}
+            
+            if _gen_error:
+                raise _gen_error
+            if course is None:
+                raise RuntimeError("课程生成为空")
             self.session.current_course = course
             course["_total_cards"] = sum(
                 len(ch.get("cards", [])) for ch in course.get("chapters", [])
