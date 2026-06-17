@@ -2150,107 +2150,85 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
     thinkingBubble.innerHTML = '<span class="thinking-dots"></span> 正在思考';
     setStatus('正在思考...');
 
-    // 2. 启动 SSE
-    try {
-      const diffFromStorage = localStorage.getItem('wanxue_difficulty') || '3-标准';
-      const resp = await fetch(apiUrl('/api/chat'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: state.sessionId,
-          difficulty: diffFromStorage
-        })
-      });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 100));
-      }
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let lastEvent = '';
-      let lastBubble = thinkingBubble;  // 复用一个 bubble 持续更新
-      let firstRealEvent = false;
-      let streamDone = false;
-      let breakLoops = false;
-
-      while (true) {
-        if (streamDone || breakLoops) break;
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+      // 2. 发送请求并获取完整响应（避免 ReadableStream 兼容性问题）
+      try {
+        const diffFromStorage = localStorage.getItem('wanxue_difficulty') || '3-标准';
+        const resp = await fetch(apiUrl('/api/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: state.sessionId,
+            difficulty: diffFromStorage
+          })
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 100));
+        }
+        // 一次性获取全部 SSE 文本（避免流式读取的兼容性问题）
+        const fullText = await resp.text();
+        const lines = fullText.split('\n');
+        let lastEvent = '';
+        let hasRealContent = false;
+        let guideCount = 0;
+        
         for (const line of lines) {
-          if (!line) continue;
-          if (line.startsWith('event:')) {
-            lastEvent = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
-            const dataStr = line.slice(5).trim();
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (trimmed.startsWith('event:')) {
+            lastEvent = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
             let data;
             try { data = JSON.parse(dataStr); } catch { data = dataStr; }
-            // 更新进度条（任何事件带 progress 都更新）
+            
             if (data && data.progress) updateProgressBar(data.progress);
-            // 把"meta"事件里的 session_id 抓出来
-            if (lastEvent === 'meta' && data.session_id) {
+            
+            if (lastEvent === 'meta' && data && data.session_id) {
               state.sessionId = data.session_id;
               saveState();
-            }
-            if (lastEvent === 'guide') {
-              // 引导消息
-              if (!firstRealEvent) {
-                // 第一次引导：替换 thinking 占位
-                firstRealEvent = true;
+            } else if (lastEvent === 'guide') {
+              guideCount++;
+              const guideText = (typeof data === 'string') ? data :
+                (data && data.guide_message) || '';
+              if (!guideText) continue;
+              if (!hasRealContent) {
+                hasRealContent = true;
                 thinkingBubble.classList.remove('thinking');
-                let guideTxt;
-                if (typeof data === 'string') {
-                  guideTxt = data;
-                } else if (data && data.guide_message) {
-                  guideTxt = data.guide_message;
-                } else {
-                  try { guideTxt = JSON.stringify(data); } catch(e) { guideTxt = '好的...'; }
-                }
-                thinkingBubble.textContent = guideTxt;
+                thinkingBubble.textContent = guideText;
                 attachTTSButton(thinkingBubble);
-                if (tts.enabled) tts.speak(guideTxt, thinkingBubble);
-                scrollToBottom();
+                if (tts.enabled) tts.speak(guideText, thinkingBubble);
               } else {
-                // 后续引导消息（偏好问题等）：另起新气泡
-                let guideTxt2;
-                if (typeof data === 'string') {
-                  guideTxt2 = data;
-                } else if (data && data.guide_message) {
-                  guideTxt2 = data.guide_message;
-                } else {
-                  continue;
-                }
-                const newBubble = addMessage('ai', guideTxt2);
+                const newBubble = addMessage('ai', guideText);
                 attachTTSButton(newBubble);
-                if (tts.enabled) tts.speak(guideTxt2, newBubble);
-                scrollToBottom();
+                if (tts.enabled) tts.speak(guideText, newBubble);
               }
-              setStatus('等待你回答...');
+              scrollToBottom();
+              setStatus(guideCount === 1 ? '正在生成...' : '等待你回答...');
             } else if (lastEvent === 'thinking') {
-              thinkingBubble.classList.remove('thinking');
-              const tTxt = (typeof data === 'string') ? data : (data && data.text) || '正在思考...';
-              thinkingBubble.textContent = tTxt;
+              const thinkText = (typeof data === 'string') ? data :
+                (data && data.text) || '正在思考...';
+              if (!hasRealContent) {
+                hasRealContent = true;
+                thinkingBubble.classList.remove('thinking');
+              }
+              thinkingBubble.textContent = thinkText;
               attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(tTxt, thinkingBubble);
+              if (tts.enabled) tts.speak(thinkText, thinkingBubble);
+              scrollToBottom();
+              setStatus('生成中...');
             } else if (lastEvent === 'course_done') {
-              firstRealEvent = true;
+              hasRealContent = true;
               thinkingBubble.classList.remove('thinking');
               const cMsg = (data && data.message) || '课程已生成！';
               thinkingBubble.textContent = cMsg;
               attachTTSButton(thinkingBubble);
               if (tts.enabled) tts.speak(cMsg, thinkingBubble);
-              if (data.course) {
+              if (data && data.course) {
                 state.currentCourse = data.course;
                 thinkingBubble.appendChild(renderCoursePreview(data.course));
-                // 自动保存到我的课程
                 saveCurrentCourseToProfile(data.course);
-                // 课程完成时自动同步学习记录
                 setTimeout(function() {
                   syncLearningRecord({
                     cards: { done: data.course._total_cards || 0, total: data.course._total_cards || 0 }
@@ -2258,101 +2236,41 @@ html, body { overscroll-behavior-y: none; touch-action: pan-y; }
                 }, 100);
               }
               setStatus('已生成');
+              scrollToBottom();
             } else if (lastEvent === 'card_done') {
-              firstRealEvent = true;
+              hasRealContent = true;
               thinkingBubble.classList.remove('thinking');
-              const card = data.card || {};
-              const newBubble = addMessage('ai', `${card.title || '补卡'}`);
-              newBubble.innerHTML = `<strong>${escapeHtml(card.title || '补卡')}</strong><div style="font-size:13px;margin-top:6px">${card.body || ''}</div>`;
+              const card = data && data.card || {};
+              const newBubble = addMessage('ai', card.title || '补卡');
+              newBubble.innerHTML = '<strong>' + escapeHtml(card.title || '补卡') + '</strong><div style="font-size:13px;margin-top:6px">' + (card.body || '') + '</div>';
               attachTTSButton(newBubble);
               if (tts.enabled) tts.speak((card.title || '补卡') + '。' + (card.body || ''), newBubble);
+              scrollToBottom();
             } else if (lastEvent === 'quiz_done') {
-              firstRealEvent = true;
+              // ... quiz rendering
+              hasRealContent = true;
               thinkingBubble.classList.remove('thinking');
-              const qMsg = `为你生成 ${(data && data.count) || 0} 道测验题：`;
+              const qMsg = '为你生成 ' + ((data && data.count) || 0) + ' 道测验题：';
               thinkingBubble.textContent = qMsg;
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(qMsg, thinkingBubble);
-              if (data.questions && data.questions.length) {
+              if (data && data.questions && data.questions.length) {
                 thinkingBubble.appendChild(renderQuiz(data.questions));
               }
               setStatus('测验已生成');
-            } else if (lastEvent === 'checks_planned') {
-              // 嵌入式验证计划已生成（前端先存起来，不渲染）
-              state.checkPlans = data.plans || [];
-              console.log('[wanxue] 已规划', data.count, '个嵌入式验证', state.checkPlans.map(p => p.level));
-            } else if (lastEvent === 'embedded_check') {
-              firstRealEvent = true;
-              thinkingBubble.classList.remove('thinking');
-              // 渲染迷你交互（不占按钮位）
-              thinkingBubble.textContent = '';
-              thinkingBubble.appendChild(renderEmbeddedCheck(data));
-              attachTTSButton(thinkingBubble);  // 重新挂 TTS 按钮（textContent='' 会清掉它）
-              // L1 题目朗读（L2/L3 是选择题不读）
-              if (tts.enabled && data.level === 'L1' && data.question) {
-                tts.speak(data.question, thinkingBubble);
-              }
-              setStatus('等待你的回答');
-            } else if (lastEvent === 'check_result') {
-              firstRealEvent = true;
-              thinkingBubble.classList.remove('thinking');
-              thinkingBubble.textContent = '';
-              thinkingBubble.appendChild(renderCheckResult(data));
-              attachTTSButton(thinkingBubble);  // 重新挂 TTS 按钮
-              // 朗读反馈（clarify 答错时 / message 答对时）
-              if (tts.enabled) {
-                const fb = (data && (data.clarify || data.message)) || '';
-                if (fb) tts.speak(fb, thinkingBubble);
-              }
-              setStatus('已记录');
-            } else if (lastEvent === 'difficulty_feedback') {
-              // 难度反馈结果
-              firstRealEvent = true;
-              thinkingBubble.classList.remove('thinking');
-              const fbMsg = (data && data.message) || '已记录你的难度偏好';
-              thinkingBubble.textContent = fbMsg;
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(fbMsg, thinkingBubble);
-              // 如果建议了新难度，更新 localStorage
-              if (data && data.suggested_difficulty) {
-                localStorage.setItem('wanxue_difficulty', data.suggested_difficulty);
-              }
-              setStatus('难度已记录');
-            } else if (lastEvent === 'summary') {
-              firstRealEvent = true;
-              thinkingBubble.classList.remove('thinking');
-              const sMsg = '课程回顾：';
-              thinkingBubble.textContent = sMsg;
-              thinkingBubble.appendChild(renderSummary(data));
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(sMsg, thinkingBubble);
-            } else if (lastEvent === 'translation_done') {
-              firstRealEvent = true;
-              thinkingBubble.classList.remove('thinking');
-              const trMsg = '已生成翻译版本：';
-              thinkingBubble.textContent = trMsg;
-              attachTTSButton(thinkingBubble);
-              if (tts.enabled) tts.speak(trMsg, thinkingBubble);
-              if (data.course) {
-                state.currentCourse = data.course;
-                thinkingBubble.appendChild(renderCoursePreview(data.course));
-              }
+              scrollToBottom();
             } else if (lastEvent === 'error') {
-              firstRealEvent = true;
+              hasRealContent = true;
               thinkingBubble.classList.remove('thinking');
-              const eMsg = '⚠️ ' + ((data && data.message) || data || '出错了');
-              thinkingBubble.textContent = eMsg;
+              thinkingBubble.textContent = '⚠️ ' + ((data && data.message) || data || '出错了');
               setStatus('出错');
+              scrollToBottom();
             } else if (lastEvent === 'done') {
-              // 收到 done 事件，结束 SSE 读取（防止 Keep-Alive 连接永不关闭）
-              streamDone = true;
-              breakLoops = true;
+              // 结束
+              break;
             }
-            scrollToBottom();
+            // scrollToBottom is called inside each handler above
           }
         }
-      }
-      setStatus('就绪');
+        setStatus('就绪');
     } catch (e) {
       thinkingBubble.classList.remove('thinking');
       thinkingBubble.textContent = '⚠️ ' + e.message;

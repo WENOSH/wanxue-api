@@ -552,6 +552,42 @@ def build_summary(course: dict) -> dict:
     return summary
 
 
+# ── 通用 keepalive 工具 ──
+async def _generate_with_keepalive(engine, topic, age, goal, difficulty):
+    """异步执行课程生成，每15秒发送保活信号。
+    yield: keepalive thinking 事件
+    return: course dict（通过 async generator 的 .asend 或外部包装获取）
+    用法:
+        result_holder = []
+        async for ev in _generate_with_keepalive(engine, topic, age, goal, difficulty):
+            if isinstance(ev, dict) and 'event' in ev:
+                yield ev
+            else:
+                result_holder.append(ev)
+        course = result_holder[0] if result_holder else None
+    简化版：直接传入 callback 接收结果
+    """
+    import asyncio
+    course_box = [None]
+    error_box = [None]
+    
+    async def _run():
+        try:
+            course_box[0] = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=difficulty)
+        except Exception as e:
+            error_box[0] = e
+    
+    _task = asyncio.create_task(_run())
+    while not _task.done():
+        _done_set, _ = await asyncio.wait([_task], timeout=15.0)
+        if not _task.done():
+            yield {"event": "thinking", "data": "⏳ 课程正在生成中，请稍候（大模型需要一点时间思考）..."}
+    
+    if error_box[0]:
+        raise error_box[0]
+    yield course_box[0]  # 最后一个 yield 返回结果
+
+
 # ===== Director 路由系统 =====
 
 class BaseHandler:
@@ -638,25 +674,13 @@ class CourseGeneratorHandler(BaseHandler):
             self.session.user_profile["mode"] = mode
             self.session.user_profile["goal"] = goal
             
-            # 异步生成课程 + 保持 SSE 连接（防止 Render proxy 60s 空闲超时）
+            # 异步生成课程 + 保持 SSE 连接
             course = None
-            _gen_error = None
-            
-            async def _run_generation():
-                nonlocal course, _gen_error
-                try:
-                    course = await engine.generate_course(topic=topic, age=age, goal=goal, difficulty=diff_key)
-                except Exception as e:
-                    _gen_error = e
-            
-            _gen_task = asyncio.create_task(_run_generation())
-            while not _gen_task.done():
-                _done_set, _ = await asyncio.wait([_gen_task], timeout=15.0)
-                if not _gen_task.done():
-                    yield {"event": "thinking", "data": "⏳ 课程正在生成中，请稍候（大模型需要一点时间思考）..."}
-            
-            if _gen_error:
-                raise _gen_error
+            async for _ev in _generate_with_keepalive(engine, topic, age, goal, diff_key):
+                if _ev.get('event') == 'thinking':
+                    yield _ev  # keepalive
+                else:
+                    course = _ev  # 最后一个 yield 是 course 数据
             if course is None:
                 raise RuntimeError("课程生成为空")
             self.session.current_course = course
@@ -731,9 +755,14 @@ class ReExplainerHandler(BaseHandler):
             engine = WanXueEngine()
             age = self.session.user_profile.get("age", "成人")
             goal = self.session.user_profile.get("goal", "入门科普")
-            course = await engine.generate_course(
-                topic=topic, age=age, goal=goal, difficulty=new_diff
-            )
+            course = None
+            async for _ev in _generate_with_keepalive(engine, topic, age, goal, new_diff):
+                if _ev.get('event') == 'thinking':
+                    yield _ev
+                else:
+                    course = _ev
+            if course is None:
+                raise RuntimeError("课程生成为空")
             self.session.current_course = course
             course["_total_cards"] = sum(
                 len(ch.get("cards", [])) for ch in course.get("chapters", [])
@@ -776,9 +805,14 @@ class SocraticTutorHandler(BaseHandler):
             engine = WanXueEngine()
             age = self.session.user_profile.get("age", "成人")
             goal = self.session.user_profile.get("goal", "入门科普")
-            course = await engine.generate_course(
-                topic=topic, age=age, goal=goal, difficulty=new_diff
-            )
+            course = None
+            async for _ev in _generate_with_keepalive(engine, topic, age, goal, new_diff):
+                if _ev.get('event') == 'thinking':
+                    yield _ev
+                else:
+                    course = _ev
+            if course is None:
+                raise RuntimeError("课程生成为空")
             self.session.current_course = course
             course["_total_cards"] = sum(
                 len(ch.get("cards", [])) for ch in course.get("chapters", [])
